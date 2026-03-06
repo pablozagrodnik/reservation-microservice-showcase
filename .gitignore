@@ -1,0 +1,23 @@
+# Go
+bin/
+main
+cinema-reservation
+vendor/
+*.exe
+*.test
+*.out
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+*.tfvars.json
+.terraform.lock.hcl
+*.tfplan
+tfplan
+
+# IDE
+.idea/
+.vscode/
+*.swp
