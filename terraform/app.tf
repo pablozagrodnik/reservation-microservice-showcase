@@ -3,6 +3,18 @@ resource "digitalocean_app" "res_service" {
 		name 	= "cin-res-api"
 		region 	= "fra1"
 
+		domain {
+			name = "reservation.pawsdevhub.me"
+			type = "PRIMARY"
+		}
+
+		alert {
+			rule = "DEPLOYMENT_FAILED"
+			destinations {
+				emails = ["pawel.zagrodnik0@gmail.com"]
+			}
+		}
+
 		service {
 			name 				= "go-backend"
 			instance_count 		= 1
@@ -34,6 +46,51 @@ resource "digitalocean_app" "res_service" {
 				success_threshold		= 1
 				failure_threshold		= 3
 			}
+		}
+
+		# Frontend
+		static_site {
+			name 			= "react-frontend"
+			build_command 	= "npm run build"
+			output_dir 		= "dist"
+			source_dir 		= "frontend"
+
+			git {
+				repo_clone_url 	= "https://github.com/pablozagrodnik/reservation-microservice-showcase"
+				branch 			= "main"
+			}
+
+			env {
+				key = "VITE_API_URL"
+				value = "https://reservation.pawsdevhub.me/api"
+			}
+		}
+
+		ingress {
+			rule {
+				component {
+					name = "go-backend"
+				}
+				match {
+					path {
+						prefix = "/api"
+					}
+				}
+			}
+			rule {
+				component {
+					name = "react-frontend"
+				}
+				match {
+					path {
+						prefix = "/"
+					}
+				}
+			}
+		}
+
+		vpc {
+			id = digitalocean_vpc.res_vpc.id
 		}
 	}
 }

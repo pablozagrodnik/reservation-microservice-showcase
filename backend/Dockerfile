@@ -7,7 +7,7 @@ COPY go.mod go.sum* ./
 RUN go mod download
 
 # Kopiowanie wszystkiego z zachowaniem struktury katalogów
-COPY . .
+COPY .. .
 
 # Budowanie z wskazaniem na pakiet main
 RUN CGO_ENABLED=0 GOOS=linux go build -o /cinema-reservation ./cmd/server
