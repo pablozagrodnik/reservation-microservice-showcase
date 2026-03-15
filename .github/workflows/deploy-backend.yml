@@ -1,0 +1,37 @@
+name: Deploy Backend to DO
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'backend/**'
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install DO CLI
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_TOKEN }}
+
+      - name: Log in to DOCR
+        run: doctl registry login --expiry-seconds 1200
+
+      - name: Build Docker image
+        run: |
+          docker build -t  registry.digitalocean.com/pawsdevhub-registry/cinema-backend:${{ github.sha }} ./backend
+
+      - name: Push image to DOCR
+        run: |
+          docker push registry.digitalocean.com/pawsdevhub-registry/cinema-backend:${{ github.sha }}
+
+      - name: Update App Spec
+        run: |
+          doctl apps get ${{ secrets.APP_ID }} -o json | jq '.[0].spec' > spec.json
+          jq '(.services[] | select(.name == "go-backend")).image.tag = "${{ github.sha }}"' spec.json > updated_spec.json
+          doctl apps update ${{ secrets.APP_ID }} --spec updated_spec.json
