@@ -29,7 +29,7 @@ resource "digitalocean_app" "res_service" {
 
 			env {
 				key 	= "DATABASE_URL"
-				value 	= digitalocean_database_cluster.res_db.private_uri
+				value 	= "${digitalocean_database_cluster.res_db.private_uri}/cinebase"
 				type 	= "SECRET"
 			}
 
@@ -93,4 +93,10 @@ resource "digitalocean_app" "res_service" {
 			id = digitalocean_vpc.res_vpc.id
 		}
 	}
+
+  lifecycle {
+		ignore_changes = [
+			spec[0].service[0].image[0].tag,
+		]
+  }
 }
