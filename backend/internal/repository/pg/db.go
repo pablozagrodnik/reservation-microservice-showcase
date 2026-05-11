@@ -3,6 +3,7 @@ package pg
 import (
 	"os"
 
+	"github.com/pablozagrodnik/reservation-microservice-showcase/internal/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -30,5 +31,11 @@ func NewDB() (*gorm.DB, error) {
 }
 
 func Migrate(db *gorm.DB) error {
-	return db.AutoMigrate()
+	return db.AutoMigrate(
+		&models.Room{},
+		&models.Movie{},
+		&models.Screening{},
+		&models.Seat{},
+		&models.Reservation{},
+	)
 }
