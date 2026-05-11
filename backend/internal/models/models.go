@@ -1,10 +1,11 @@
 package models
 
 type Movie struct {
-	ID         uint        `gorm:"primaryKey" json:"id"`
-	Title      string      `json:"title"`
-	Poster     string      `json:"poster"`
-	Screenings []Screening `json:"screenings"`
+	ID          uint        `gorm:"primaryKey" json:"id"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
+	Poster      string      `json:"poster"`
+	Screenings  []Screening `json:"screenings"`
 }
 
 type Room struct {
