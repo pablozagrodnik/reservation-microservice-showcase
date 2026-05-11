@@ -134,6 +134,24 @@ func main() {
 
 	admin := r.Group("/admin")
 	{
+		admin.GET("/rooms", func(c *gin.Context) {
+			var rooms []models.Room
+			db.Find(&rooms)
+			c.JSON(http.StatusOK, rooms)
+		})
+
+		admin.GET("/reservations", func(c *gin.Context) {
+			var reservations []models.Reservation
+			db.Preload("Screening.Movie").Preload("Seat").Find(&reservations)
+			c.JSON(http.StatusOK, reservations)
+		})
+
+		admin.GET("/screenings", func(c *gin.Context) {
+			var screenings []models.Screening
+			db.Preload("Movie").Preload("Room").Find(&screenings)
+			c.JSON(http.StatusOK, screenings)
+		})
+
 		// zarządzanie filmami
 		admin.POST("/movies", func(c *gin.Context) {
 			var movie models.Movie
