@@ -28,9 +28,9 @@ resource "digitalocean_app" "res_service" {
 			}
 
 			env {
-				key 	= "DATABASE_URL"
-				value 	= "${digitalocean_database_cluster.res_db.private_uri}/cinebase"
-				type 	= "SECRET"
+				key   = "DATABASE_URL"
+				value = "postgresql://doadmin:${var.db_password}@${var.db_private_host}:25060/${digitalocean_database_db.res_db_name.name}?sslmode=require"
+				type  = "SECRET"
 			}
 
 			env {

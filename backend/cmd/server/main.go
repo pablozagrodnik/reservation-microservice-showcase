@@ -54,7 +54,7 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	r.GET("/api/movies", func(c *gin.Context) {
+	r.GET("/movies", func(c *gin.Context) {
 		var movies []models.Movie
 
 		// pobranie filmów z dołączeniem seansów
@@ -68,7 +68,7 @@ func main() {
 		c.JSON(http.StatusOK, movies)
 	})
 
-	r.GET("/api/screenings/:id/seats", func(c *gin.Context) {
+	r.GET("/screenings/:id/seats", func(c *gin.Context) {
 		screeningID := c.Param("id")
 
 		// pobranie danych o seansie
@@ -106,7 +106,7 @@ func main() {
 		c.JSON(http.StatusOK, response)
 	})
 
-	r.POST("/api/reservations", func(c *gin.Context) {
+	r.POST("/reservations", func(c *gin.Context) {
 		var res models.Reservation
 		if err := c.ShouldBindJSON(&res); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Błędne dane rezerwacji"})
@@ -132,7 +132,7 @@ func main() {
 		c.JSON(http.StatusCreated, res)
 	})
 
-	admin := r.Group("/api/admin")
+	admin := r.Group("/admin")
 	{
 		// zarządzanie filmami
 		admin.POST("/movies", func(c *gin.Context) {
