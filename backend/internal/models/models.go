@@ -33,7 +33,8 @@ type Seat struct {
 }
 
 type Reservation struct {
-	ID          uint `gorm:"primaryKey" json:"id"`
-	ScreeningID uint `json:"screening_id"`
-	SeatID      uint `json:"seat_id"`
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	ScreeningID uint   `json:"screening_id"`
+	SeatID      uint   `json:"seat_id"`
+	UserEmail   string `json:"user_email"`
 }
