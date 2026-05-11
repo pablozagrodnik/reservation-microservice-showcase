@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 type Movie struct {
 	ID          uint        `gorm:"primaryKey" json:"id"`
 	Title       string      `json:"title"`
@@ -16,11 +18,11 @@ type Room struct {
 }
 
 type Screening struct {
-	ID      uint   `gorm:"primaryKey" json:"id"`
-	MovieID uint   `json:"-"`
-	Time    string `json:"time"`
-	RoomID  uint   `json:"room_id"`
-	Room    Room   `gorm:"foreignKey:RoomID" json:"room"`
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	MovieID   uint      `json:"-"`
+	StartTime time.Time `json:"start_time"`
+	RoomID    uint      `json:"room_id"`
+	Room      Room      `gorm:"foreignKey:RoomID" json:"room"`
 }
 
 type Seat struct {

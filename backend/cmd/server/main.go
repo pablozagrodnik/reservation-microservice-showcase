@@ -10,6 +10,14 @@ import (
 	"github.com/pablozagrodnik/reservation-microservice-showcase/internal/repository/pg"
 )
 
+// odpowiedzi json
+type SeatResponse struct {
+	ID      uint `json:"id"`
+	Row     int  `json:"row"`
+	Col     int  `json:"col"`
+	IsTaken bool `json:"is_taken"`
+}
+
 func main() {
 
 	db, err := pg.NewDB()
@@ -43,6 +51,44 @@ func main() {
 		}
 
 		c.JSON(http.StatusOK, movies)
+	})
+
+	r.GET("/api/screenings/:id/seats", func(c *gin.Context) {
+		screeningID := c.Param("id")
+
+		// pobranie danych o seansie
+		var screening models.Screening
+		if err := db.Preload("Room").First(&screening, screeningID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Seans nie istnieje"})
+			return
+		}
+
+		// pobranie miejsc sali
+		var seats []models.Seat
+		db.Where("room_id = ?", screening.RoomID).Order("row asc, col asc").Find(&seats)
+
+		// pobranie istniejących rezerwacji dla tego seansu
+		var reservations []models.Reservation
+		db.Where("screening_id = ?", screeningID).Find(&reservations)
+
+		// mapa zajętych miejsc
+		takenMap := make(map[uint]bool)
+		for _, res := range reservations {
+			takenMap[res.SeatID] = true
+		}
+
+		// mapowanie miejsc na odpowiedzi json
+		var response []SeatResponse
+		for _, seat := range seats {
+			response = append(response, SeatResponse{
+				ID:      seat.ID,
+				Row:     seat.Row,
+				Col:     seat.Col,
+				IsTaken: takenMap[seat.ID],
+			})
+		}
+
+		c.JSON(http.StatusOK, response)
 	})
 
 	port := os.Getenv("PORT")
