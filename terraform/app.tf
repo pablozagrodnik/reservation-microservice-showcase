@@ -54,6 +54,7 @@ resource "digitalocean_app" "res_service" {
 			build_command 	= "npm run build"
 			output_dir 		= "dist"
 			source_dir 		= "frontend"
+			error_document 	= "index.html"
 
 			git {
 				repo_clone_url 	= "https://github.com/pablozagrodnik/reservation-microservice-showcase"
