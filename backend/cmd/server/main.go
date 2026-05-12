@@ -132,38 +132,16 @@ func main() {
 		c.JSON(http.StatusCreated, res)
 	})
 
+	// panel admina (pełny crud)
 	admin := r.Group("/admin")
 	{
+		// --- SALE ---
 		admin.GET("/rooms", func(c *gin.Context) {
 			var rooms []models.Room
 			db.Find(&rooms)
 			c.JSON(http.StatusOK, rooms)
 		})
 
-		admin.GET("/reservations", func(c *gin.Context) {
-			var reservations []models.Reservation
-			db.Preload("Screening.Movie").Preload("Seat").Find(&reservations)
-			c.JSON(http.StatusOK, reservations)
-		})
-
-		admin.GET("/screenings", func(c *gin.Context) {
-			var screenings []models.Screening
-			db.Preload("Movie").Preload("Room").Find(&screenings)
-			c.JSON(http.StatusOK, screenings)
-		})
-
-		// zarządzanie filmami
-		admin.POST("/movies", func(c *gin.Context) {
-			var movie models.Movie
-			if err := c.ShouldBindJSON(&movie); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-			db.Create(&movie)
-			c.JSON(http.StatusCreated, movie)
-		})
-
-		// tworzenie sali z miejscami
 		admin.POST("/rooms", func(c *gin.Context) {
 			var req CreateRoomRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
@@ -171,21 +149,19 @@ func main() {
 				return
 			}
 
-			// sala
 			room := models.Room{Name: req.Name}
 			if err := db.Create(&room).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Błąd tworzenia sali"})
 				return
 			}
 
-			// generowanie miejsc
 			var seats []models.Seat
 			for r := 1; r <= req.Rows; r++ {
-				for c := 1; c <= req.Cols; c++ {
+				for col := 1; col <= req.Cols; col++ {
 					seats = append(seats, models.Seat{
 						RoomID: room.ID,
 						Row:    r,
-						Col:    c,
+						Col:    col,
 					})
 				}
 			}
@@ -194,7 +170,22 @@ func main() {
 			c.JSON(http.StatusCreated, gin.H{"message": "Sala i miejsca wygenerowane", "room": room})
 		})
 
-		// dodawanie seansu do sali
+		admin.DELETE("/rooms/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			if err := db.Unscoped().Delete(&models.Room{}, id).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Błąd podczas usuwania sali"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Sala i wszystkie jej zależności zostały usunięte"})
+		})
+
+		// --- SEANSE ---
+		admin.GET("/screenings", func(c *gin.Context) {
+			var screenings []models.Screening
+			db.Preload("Movie").Preload("Room").Find(&screenings)
+			c.JSON(http.StatusOK, screenings)
+		})
+
 		admin.POST("/screenings", func(c *gin.Context) {
 			var req CreateScreeningRequest
 			if err := c.ShouldBindJSON(&req); err != nil {
@@ -209,6 +200,87 @@ func main() {
 			}
 			db.Create(&screening)
 			c.JSON(http.StatusCreated, screening)
+		})
+
+		admin.PATCH("/screenings/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			var screening models.Screening
+
+			if err := db.First(&screening, id).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Nie znaleziono seansu"})
+				return
+			}
+
+			if err := c.ShouldBindJSON(&screening); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			db.Save(&screening)
+			c.JSON(http.StatusOK, screening)
+		})
+
+		admin.DELETE("/screenings/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			if err := db.Unscoped().Delete(&models.Screening{}, id).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Błąd podczas usuwania seansu"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Seans usunięto pomyślnie"})
+		})
+
+		// --- FILMY ---
+		admin.POST("/movies", func(c *gin.Context) {
+			var movie models.Movie
+			if err := c.ShouldBindJSON(&movie); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			db.Create(&movie)
+			c.JSON(http.StatusCreated, movie)
+		})
+
+		admin.PATCH("/movies/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			var movie models.Movie
+
+			if err := db.First(&movie, id).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Nie znaleziono filmu"})
+				return
+			}
+
+			if err := c.ShouldBindJSON(&movie); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+
+			db.Save(&movie)
+			c.JSON(http.StatusOK, movie)
+		})
+
+		admin.DELETE("/movies/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			if err := db.Unscoped().Delete(&models.Movie{}, id).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Błąd podczas usuwania filmu"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Film usunięto pomyślnie"})
+		})
+
+		// --- REZERWACJE ---
+		admin.GET("/reservations", func(c *gin.Context) {
+			var reservations []models.Reservation
+			db.Preload("Screening.Movie").Preload("Seat").Find(&reservations)
+			c.JSON(http.StatusOK, reservations)
+		})
+
+		admin.DELETE("/reservations/:id", func(c *gin.Context) {
+			id := c.Param("id")
+			if err := db.Unscoped().Delete(&models.Reservation{}, id).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Błąd podczas usuwania rezerwacji"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Rezerwacja anulowana pomyślnie"})
 		})
 	}
 
