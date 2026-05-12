@@ -54,7 +54,7 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	r.GET("/api/movies", func(c *gin.Context) {
+	r.GET("/movies", func(c *gin.Context) {
 		var movies []models.Movie
 
 		// pobranie filmów z dołączeniem seansów
@@ -68,7 +68,7 @@ func main() {
 		c.JSON(http.StatusOK, movies)
 	})
 
-	r.GET("/api/screenings/:id/seats", func(c *gin.Context) {
+	r.GET("/screenings/:id/seats", func(c *gin.Context) {
 		screeningID := c.Param("id")
 
 		// pobranie danych o seansie
@@ -106,7 +106,7 @@ func main() {
 		c.JSON(http.StatusOK, response)
 	})
 
-	r.POST("/api/reservations", func(c *gin.Context) {
+	r.POST("/reservations", func(c *gin.Context) {
 		var res models.Reservation
 		if err := c.ShouldBindJSON(&res); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Błędne dane rezerwacji"})
@@ -132,8 +132,26 @@ func main() {
 		c.JSON(http.StatusCreated, res)
 	})
 
-	admin := r.Group("/api/admin")
+	admin := r.Group("/admin")
 	{
+		admin.GET("/rooms", func(c *gin.Context) {
+			var rooms []models.Room
+			db.Find(&rooms)
+			c.JSON(http.StatusOK, rooms)
+		})
+
+		admin.GET("/reservations", func(c *gin.Context) {
+			var reservations []models.Reservation
+			db.Preload("Screening.Movie").Preload("Seat").Find(&reservations)
+			c.JSON(http.StatusOK, reservations)
+		})
+
+		admin.GET("/screenings", func(c *gin.Context) {
+			var screenings []models.Screening
+			db.Preload("Movie").Preload("Room").Find(&screenings)
+			c.JSON(http.StatusOK, screenings)
+		})
+
 		// zarządzanie filmami
 		admin.POST("/movies", func(c *gin.Context) {
 			var movie models.Movie
