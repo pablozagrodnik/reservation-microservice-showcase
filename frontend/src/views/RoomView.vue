@@ -1,37 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { computed, toRef } from 'vue';
+import { useRouter } from 'vue-router';
 import type { Seat } from '@/types';
+import { useSeats } from '@/composables/useSeats';
+import { useReservationStore } from '@/stores/useReservationStore';
 
-// const props = defineProps<{
-//   screeningId: number;
-// }>();
+const props = defineProps<{ id: string }>();
 
-defineProps<{
-  id: string;
-}>();
+const router = useRouter();
+const store = useReservationStore();
+const { seats, isLoading, error, refresh } = useSeats(toRef(props, 'id'));
 
-const seats = ref<Seat[]>([]);
-const selectedSeatIds = ref<Set<number>>(new Set());
-const isLoading = ref(true);
+const selectedIds = computed<Set<number>>(
+    () => new Set(store.selectedSeats.map(s => s.id))
+);
 
-onMounted(async () => {
-  try {
-    seats.value = [
-      { id: 1, row: 1, col: 1, is_taken: true },
-      { id: 2, row: 1, col: 2, is_taken: false },
-      { id: 3, row: 1, col: 3, is_taken: false },
-      { id: 4, row: 2, col: 1, is_taken: false },
-      { id: 5, row: 2, col: 2, is_taken: true },
-      { id: 6, row: 2, col: 3, is_taken: false },
-    ];
-  } catch (error) {
-    console.error("Błąd podczas pobierania miejsc:", error);
-  } finally {
-    isLoading.value = false;
-  }
-});
-
-const seatsByRow = computed(() => {
+const seatsByRow = computed<[number, Seat[]][]>(() => {
   const rows = new Map<number, Seat[]>();
   seats.value.forEach(seat => {
     if (!rows.has(seat.row)) rows.set(seat.row, []);
@@ -40,27 +24,31 @@ const seatsByRow = computed(() => {
   return Array.from(rows.entries()).sort((a, b) => a[0] - b[0]);
 });
 
-const toggleSeat = (seat: Seat) => {
-  if (seat.is_taken) return;
+const hasScreeningInStore = computed<boolean>(() => store.screening !== null);
+const canProceed = computed<boolean>(
+    () => store.selectedSeats.length > 0 && hasScreeningInStore.value
+);
 
-  const updatedSet = new Set(selectedSeatIds.value);
-  if (updatedSet.has(seat.id)) {
-    updatedSet.delete(seat.id);
-  } else {
-    updatedSet.add(seat.id);
-  }
-  selectedSeatIds.value = updatedSet;
+const onSeatClick = (seat: Seat): void => {
+  store.toggleSeat(seat);
 };
 
-const getSeatClass = (seat: Seat) => {
+const getSeatClass = (seat: Seat): string => {
   if (seat.is_taken) return 'seat-taken';
-  if (selectedSeatIds.value.has(seat.id)) return 'seat-selected';
+  if (selectedIds.value.has(seat.id)) return 'seat-selected';
   return 'seat-available';
 };
 
-const getSeatAriaLabel = (seat: Seat) => {
-  const status = seat.is_taken ? 'Zajęte' : selectedSeatIds.value.has(seat.id) ? 'Wybrane' : 'Wolne';
+const getSeatAriaLabel = (seat: Seat): string => {
+  const status = seat.is_taken
+      ? 'Zajęte'
+      : selectedIds.value.has(seat.id) ? 'Wybrane' : 'Wolne';
   return `Rząd ${seat.row}, miejsce ${seat.col}. Status: ${status}`;
+};
+
+const goToCheckout = (): void => {
+  if (!canProceed.value) return;
+  void router.push({ name: 'checkout' });
 };
 </script>
 
@@ -70,23 +58,39 @@ const getSeatAriaLabel = (seat: Seat) => {
 
     <div class="screen-indicator" aria-hidden="true">EKRAN</div>
 
-    <div v-if="isLoading" class="skeleton-seats" aria-busy="true">
+    <div v-if="isLoading" class="skeleton-seats" aria-busy="true" aria-live="polite">
       <div v-for="i in 12" :key="i" class="seat-skeleton"></div>
     </div>
 
+    <div v-else-if="error" class="error-state" role="alert">
+      <p class="error-message">{{ error }}</p>
+      <button type="button" class="retry-btn" @click="refresh">
+        Spróbuj ponownie
+      </button>
+    </div>
+
+    <p v-else-if="seats.length === 0" class="empty-state">
+      Brak danych o miejscach dla tego seansu.
+    </p>
+
     <div v-else class="cinema-room">
-      <div v-for="[rowIndex, rowSeats] in seatsByRow" :key="rowIndex" class="seat-row">
+      <div
+          v-for="[rowIndex, rowSeats] in seatsByRow"
+          :key="rowIndex"
+          class="seat-row"
+      >
         <span class="row-label" aria-hidden="true">{{ rowIndex }}</span>
 
         <button
             v-for="seat in rowSeats"
             :key="seat.id"
+            type="button"
             class="seat-button"
             :class="getSeatClass(seat)"
             :disabled="seat.is_taken"
             :aria-label="getSeatAriaLabel(seat)"
-            :aria-pressed="selectedSeatIds.has(seat.id)"
-            @click="toggleSeat(seat)"
+            :aria-pressed="selectedIds.has(seat.id)"
+            @click="onSeatClick(seat)"
         >
           <span class="sr-only">{{ seat.col }}</span>
         </button>
@@ -100,10 +104,30 @@ const getSeatAriaLabel = (seat: Seat) => {
     </div>
 
     <div class="selection-summary">
-      <p v-if="selectedSeatIds.size === 0" class="validation-message">Proszę wybrać co najmniej jedno miejsce.</p>
+      <p
+          v-if="store.selectedSeats.length === 0"
+          class="validation-message"
+      >
+        Proszę wybrać co najmniej jedno miejsce.
+      </p>
       <div v-else class="summary-actions">
-        <p>Wybrano: <strong>{{ selectedSeatIds.size }}</strong> miejsc(a)</p>
-        <button class="primary-btn">Przejdź do płatności</button>
+        <p>
+          Wybrano: <strong>{{ store.selectedSeats.length }}</strong> miejsc(a)
+        </p>
+        <p
+            v-if="!hasScreeningInStore"
+            class="validation-message"
+        >
+          Wróć do repertuaru i wybierz seans, aby kontynuować.
+        </p>
+        <button
+            type="button"
+            class="primary-btn"
+            :disabled="!canProceed"
+            @click="goToCheckout"
+        >
+          Przejdź do płatności
+        </button>
       </div>
     </div>
   </section>
@@ -152,11 +176,10 @@ const getSeatAriaLabel = (seat: Seat) => {
   color: #6b7280;
 }
 
-/* Base Seat Styles */
 .seat-button, .seat-box {
   width: 40px;
   height: 40px;
-  border-radius: 8px 8px 4px 4px; /* Kształt oparcia */
+  border-radius: 8px 8px 4px 4px;
   border: 2px solid transparent;
   cursor: pointer;
   transition: transform 0.1s ease, border-color 0.2s ease;
@@ -167,9 +190,8 @@ const getSeatAriaLabel = (seat: Seat) => {
   outline-offset: 2px;
 }
 
-/* Colors logic */
 .seat-available {
-  background-color: #e5e7eb; /* Szary */
+  background-color: #e5e7eb;
   border-color: #d1d5db;
 }
 
@@ -178,14 +200,14 @@ const getSeatAriaLabel = (seat: Seat) => {
 }
 
 .seat-taken {
-  background-color: #ef4444; /* Czerwony */
+  background-color: #ef4444;
   border-color: #dc2626;
   cursor: not-allowed;
   opacity: 0.7;
 }
 
 .seat-selected {
-  background-color: #f97316; /* Pomarańczowy */
+  background-color: #f97316;
   border-color: #ea580c;
   transform: scale(1.1);
 }
@@ -250,17 +272,65 @@ const getSeatAriaLabel = (seat: Seat) => {
   font-size: 1.1rem;
 }
 
-/* Skeleton Seats */
+.primary-btn:disabled {
+  background-color: #fdba74;
+  cursor: not-allowed;
+}
+
+/* Skeleton seats */
 .skeleton-seats {
   display: grid;
   grid-template-columns: repeat(6, 40px);
   gap: 0.5rem;
 }
+
 .seat-skeleton {
   width: 40px;
   height: 40px;
   background-color: #e5e7eb;
   border-radius: 8px 8px 4px 4px;
   animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Error & empty */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background-color: #fef2f2;
+}
+
+.error-message {
+  margin: 0;
+  color: #991b1b;
+}
+
+.retry-btn {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border: 1px solid #991b1b;
+  border-radius: 4px;
+  background-color: #ffffff;
+  color: #991b1b;
+  font: inherit;
+}
+
+.retry-btn:hover {
+  background-color: #991b1b;
+  color: #ffffff;
+}
+
+.empty-state {
+  color: #6b7280;
+  font-style: italic;
 }
 </style>

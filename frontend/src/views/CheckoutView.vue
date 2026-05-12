@@ -1,25 +1,94 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { useReservationStore } from '@/stores/useReservationStore';
+import { createReservation } from '@/api/reservations';
+import { ApiError } from '@/api/client';
+import type { Seat } from '@/types';
 
 const store = useReservationStore();
-const email = ref('');
-const isProcessing = ref(false);
-const paymentSuccess = ref(false);
+const router = useRouter();
 
-const handlePayment = async () => {
-  if (!email.value || !store.isReadyForCheckout) return;
+const email = ref<string>('');
+const isProcessing = ref<boolean>(false);
+const paymentSuccess = ref<boolean>(false);
+const errorMessage = ref<string | null>(null);
+const conflictedSeats = ref<Seat[]>([]);
+
+const canSubmit = computed<boolean>(
+    () => !!email.value && store.isReadyForCheckout && !isProcessing.value
+);
+
+const formatSeatLabel = (seat: Seat): string => `Rząd ${seat.row}, miejsce ${seat.col}`;
+
+const handlePayment = async (): Promise<void> => {
+  const screening = store.screening;
+  if (!email.value || !screening || store.selectedSeats.length === 0) return;
 
   isProcessing.value = true;
+  errorMessage.value = null;
+  conflictedSeats.value = [];
 
-  await new Promise(resolve => setTimeout(resolve, 1500));
+  const seats: Seat[] = [...store.selectedSeats];
+  const trimmedEmail = email.value.trim();
+
+  // Promise.allSettled zamiast Promise.all — chcemy wiedzieć,
+  // które konkretnie miejsca się nie udały (np. 409), nawet jeśli inne się zapisały.
+  const results = await Promise.allSettled(
+      seats.map(seat =>
+          createReservation({
+            screening_id: screening.id,
+            seat_id: seat.id,
+            user_email: trimmedEmail,
+          })
+      )
+  );
+
+  const failures: { seat: Seat; reason: unknown }[] = [];
+  results.forEach((res, idx) => {
+    if (res.status === 'rejected') {
+      failures.push({ seat: seats[idx], reason: res.reason });
+    }
+  });
 
   isProcessing.value = false;
-  paymentSuccess.value = true;
 
+  if (failures.length === 0) {
+    paymentSuccess.value = true;
+    store.clearReservation();
+    return;
+  }
+
+  const conflicts = failures.filter(
+      f => f.reason instanceof ApiError && f.reason.status === 409
+  );
+
+  if (conflicts.length === failures.length) {
+    conflictedSeats.value = conflicts.map(c => c.seat);
+    errorMessage.value =
+        conflicts.length === seats.length
+            ? 'Niestety, wybrane miejsca zostały właśnie zajęte przez kogoś innego. Wróć do wyboru miejsc i spróbuj ponownie.'
+            : 'Niektóre z wybranych miejsc zostały właśnie zajęte przez kogoś innego. Wróć do wyboru miejsc i spróbuj ponownie.';
+  } else {
+    errorMessage.value =
+        'Wystąpił nieoczekiwany błąd podczas rezerwacji. Spróbuj ponownie za chwilę.';
+  }
 };
 
-const formatDate = (dateString?: string) => {
+const goHome = (): void => {
+  void router.push({ name: 'home' });
+};
+
+const goBackToSeats = (): void => {
+  const screeningId = store.screening?.id;
+  if (screeningId !== undefined) {
+    void router.push({ name: 'room', params: { id: String(screeningId) } });
+  } else {
+    void router.push({ name: 'home' });
+  }
+};
+
+const formatDate = (dateString?: string): string => {
   if (!dateString) return '';
   return new Date(dateString).toLocaleString('pl-PL', {
     weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit'
@@ -32,12 +101,13 @@ const formatDate = (dateString?: string) => {
     <div v-if="paymentSuccess" class="success-message" role="alert">
       <h2>🎉 Płatność zakończona sukcesem!</h2>
       <p>Bilety zostały wysłane na adres: <strong>{{ email }}</strong></p>
-      <button @click="store.clearReservation()" class="btn-secondary">Wróć do strony głównej</button>
+      <button @click="goHome" class="btn-secondary">Wróć do strony głównej</button>
     </div>
 
     <div v-else-if="!store.isReadyForCheckout" class="empty-state">
-      <h2>Brak wybranch biletów</h2>
+      <h2>Brak wybranych biletów</h2>
       <p>Wybierz seans i miejsca, aby przejść do płatności.</p>
+      <button @click="goHome" class="btn-secondary">Przejdź do repertuaru</button>
     </div>
 
     <div v-else class="checkout-container">
@@ -51,7 +121,7 @@ const formatDate = (dateString?: string) => {
 
         <ul class="tickets-list">
           <li v-for="seat in store.selectedSeats" :key="seat.id" class="ticket-item">
-            <span>Bilet normalny (Rząd {{ seat.row }}, Miejsce {{ seat.col }})</span>
+            <span>Bilet normalny ({{ formatSeatLabel(seat) }})</span>
             <span>25,00 zł</span>
           </li>
         </ul>
@@ -65,7 +135,7 @@ const formatDate = (dateString?: string) => {
       <section class="payment-form" aria-labelledby="payment-heading">
         <h2 id="payment-heading">Dane płatności</h2>
 
-        <form @submit.prevent="handlePayment">
+        <form @submit.prevent="handlePayment" novalidate>
           <div class="form-group">
             <label for="email">Adres e-mail (do wysyłki biletów)</label>
             <input
@@ -74,13 +144,32 @@ const formatDate = (dateString?: string) => {
                 v-model="email"
                 required
                 placeholder="jan.kowalski@example.com"
+                :disabled="isProcessing"
+                autocomplete="email"
             />
+          </div>
+
+          <div
+              v-if="errorMessage"
+              class="error-message"
+              role="alert"
+              aria-live="assertive"
+          >
+            <p>{{ errorMessage }}</p>
+            <ul v-if="conflictedSeats.length > 0" class="conflict-list">
+              <li v-for="seat in conflictedSeats" :key="seat.id">
+                {{ formatSeatLabel(seat) }}
+              </li>
+            </ul>
+            <button type="button" class="btn-secondary" @click="goBackToSeats">
+              Wróć do wyboru miejsc
+            </button>
           </div>
 
           <button
               type="submit"
               class="pay-btn"
-              :disabled="isProcessing || !email"
+              :disabled="!canSubmit"
               :aria-busy="isProcessing"
           >
             <span v-if="isProcessing">Przetwarzanie...</span>
@@ -111,7 +200,7 @@ const formatDate = (dateString?: string) => {
   }
 }
 
-.summary, .payment-form, .success-message {
+.summary, .payment-form, .success-message, .empty-state {
   background: white;
   padding: 1.5rem;
   border-radius: 8px;
@@ -163,6 +252,11 @@ const formatDate = (dateString?: string) => {
   border-color: #f97316;
 }
 
+.form-group input:disabled {
+  background-color: #f3f4f6;
+  cursor: not-allowed;
+}
+
 .pay-btn {
   width: 100%;
   padding: 1rem;
@@ -190,11 +284,55 @@ const formatDate = (dateString?: string) => {
   cursor: pointer;
 }
 
+.btn-secondary:hover {
+  background-color: #e5e7eb;
+}
+
 .success-message {
   text-align: center;
   padding: 3rem;
   background-color: #ecfdf5;
   border-color: #a7f3d0;
   color: #065f46;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: #4b5563;
+}
+
+.error-message {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  color: #991b1b;
+}
+
+.error-message p {
+  margin: 0 0 0.5rem;
+  font-weight: 500;
+}
+
+.conflict-list {
+  margin: 0.5rem 0 0.75rem 1.25rem;
+  padding: 0;
+}
+
+.conflict-list li {
+  margin-bottom: 0.25rem;
+}
+
+.error-message .btn-secondary {
+  margin-top: 0.5rem;
+  background-color: white;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.error-message .btn-secondary:hover {
+  background-color: #fee2e2;
 }
 </style>
