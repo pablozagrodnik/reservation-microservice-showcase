@@ -5,6 +5,7 @@ import { useReservationStore } from '@/stores/useReservationStore';
 import { createReservation } from '@/api/reservations';
 import { ApiError } from '@/api/client';
 import type { Seat } from '@/types';
+import TicketSuccess from '@/components/TicketSuccess.vue';
 
 const store = useReservationStore();
 const router = useRouter();
@@ -12,18 +13,33 @@ const router = useRouter();
 const email = ref<string>('');
 const isProcessing = ref<boolean>(false);
 const paymentSuccess = ref<boolean>(false);
+const successDetails = ref<any | null>(null);
 const errorMessage = ref<string | null>(null);
 const conflictedSeats = ref<Seat[]>([]);
+const emailError = ref<string | null>(null);
 
 const canSubmit = computed<boolean>(
-    () => !!email.value && store.isReadyForCheckout && !isProcessing.value
+    () => !!email.value && isValidEmail(email.value) && store.isReadyForCheckout && !isProcessing.value
 );
+
+const isValidEmail = (emailStr: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(emailStr);
+};
+
+const onEmailInput = (): void => {
+  if (email.value && !isValidEmail(email.value)) {
+    emailError.value = 'Podaj prawidłowy adres e-mail.';
+  } else {
+    emailError.value = null;
+  }
+};
 
 const formatSeatLabel = (seat: Seat): string => `Rząd ${seat.row}, miejsce ${seat.col}`;
 
 const handlePayment = async (): Promise<void> => {
-  const screening = store.screening;
-  if (!email.value || !screening || store.selectedSeats.length === 0) return;
+   const screening = store.screening;
+   if (!email.value || !isValidEmail(email.value) || !screening || store.selectedSeats.length === 0) return;
 
   isProcessing.value = true;
   errorMessage.value = null;
@@ -32,8 +48,6 @@ const handlePayment = async (): Promise<void> => {
   const seats: Seat[] = [...store.selectedSeats];
   const trimmedEmail = email.value.trim();
 
-  // Promise.allSettled zamiast Promise.all — chcemy wiedzieć,
-  // które konkretnie miejsca się nie udały (np. 409), nawet jeśli inne się zapisały.
   const results = await Promise.allSettled(
       seats.map(seat =>
           createReservation({
@@ -54,6 +68,26 @@ const handlePayment = async (): Promise<void> => {
   isProcessing.value = false;
 
   if (failures.length === 0) {
+    const reservationIds: number[] = results
+        .filter(r => r.status === 'fulfilled')
+        .map((r: any) => r.value.id);
+
+    const successfulSeats: Seat[] = results
+        .map((r, idx) => ({ res: r, seat: seats[idx] }))
+        .filter(x => x.res.status === 'fulfilled')
+        .map(x => x.seat);
+
+    successDetails.value = {
+      reservationIds,
+      movieTitle: store.movie?.title ?? '',
+      roomName: screening.room.name,
+      startTime: screening.start_time,
+      seats: successfulSeats,
+      email: trimmedEmail,
+      total: store.totalAmount,
+      poster: store.movie?.poster ?? ''
+    };
+
     paymentSuccess.value = true;
     store.clearReservation();
     return;
@@ -98,10 +132,11 @@ const formatDate = (dateString?: string): string => {
 
 <template>
   <main class="checkout-page">
-    <div v-if="paymentSuccess" class="success-message" role="alert">
-      <h2>🎉 Płatność zakończona sukcesem!</h2>
-      <p>Bilety zostały wysłane na adres: <strong>{{ email }}</strong></p>
-      <button @click="goHome" class="btn-secondary">Wróć do strony głównej</button>
+    <div v-if="paymentSuccess && successDetails" class="success-message" role="alert">
+      <TicketSuccess :details="successDetails" />
+      <div style="text-align:center; margin-top:1rem;">
+        <button @click="goHome" class="btn-secondary">Wróć do strony głównej</button>
+      </div>
     </div>
 
     <div v-else-if="!store.isReadyForCheckout" class="empty-state">
@@ -111,13 +146,14 @@ const formatDate = (dateString?: string): string => {
     </div>
 
     <div v-else class="checkout-container">
-      <section class="summary" aria-labelledby="summary-heading">
-        <h2 id="summary-heading">Twoja rezerwacja</h2>
+       <section class="summary" aria-labelledby="summary-heading">
+         <h2 id="summary-heading">Twoja rezerwacja</h2>
 
-        <div class="movie-details">
-          <h3>Sala: {{ store.screening?.room.name }}</h3>
-          <p class="date">{{ formatDate(store.screening?.start_time) }}</p>
-        </div>
+         <div class="movie-details">
+           <h3 v-if="store.movie">Film: {{ store.movie.title }}</h3>
+           <h3>Sala: {{ store.screening?.room.name }}</h3>
+           <p class="date">{{ formatDate(store.screening?.start_time) }}</p>
+         </div>
 
         <ul class="tickets-list">
           <li v-for="seat in store.selectedSeats" :key="seat.id" class="ticket-item">
@@ -137,17 +173,19 @@ const formatDate = (dateString?: string): string => {
 
         <form @submit.prevent="handlePayment" novalidate>
           <div class="form-group">
-            <label for="email">Adres e-mail (do wysyłki biletów)</label>
-            <input
-                id="email"
-                type="email"
-                v-model="email"
-                required
-                placeholder="jan.kowalski@example.com"
-                :disabled="isProcessing"
-                autocomplete="email"
-            />
-          </div>
+             <label for="email">Adres e-mail (do wysyłki biletów)</label>
+             <input
+                 id="email"
+                 type="email"
+                 v-model="email"
+                 required
+                 placeholder="jan.kowalski@example.com"
+                 :disabled="isProcessing"
+                 autocomplete="email"
+                 @input="onEmailInput"
+             />
+             <span v-if="emailError" class="field-error">{{ emailError }}</span>
+           </div>
 
           <div
               v-if="errorMessage"
@@ -255,6 +293,12 @@ const formatDate = (dateString?: string): string => {
 .form-group input:disabled {
   background-color: #f3f4f6;
   cursor: not-allowed;
+}
+
+.field-error {
+  color: #991b1b;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
 }
 
 .pay-btn {

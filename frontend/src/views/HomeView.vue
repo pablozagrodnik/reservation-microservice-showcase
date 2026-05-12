@@ -16,9 +16,20 @@ const formatDate = (dateString: string): string => {
   return new Date(dateString).toLocaleDateString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit' });
 };
 
-const selectScreening = (screening: Screening): void => {
-  store.setScreening(screening);
+const selectScreening = (screening: Screening, movie: any): void => {
+  store.setScreening(screening, movie);
   router.push({ name: 'room', params: { id: screening.id } });
+};
+
+const filterFutureScreenings = (screenings: Screening[]): Screening[] => {
+  const now = new Date();
+  return screenings.filter(s => new Date(s.start_time) > now);
+};
+
+const getPosterImage = (poster: string): string => {
+  if (!poster) return '';
+  if (poster.startsWith('http')) return poster;
+  return poster;
 };
 </script>
 
@@ -61,7 +72,18 @@ const selectScreening = (screening: Screening): void => {
     </p>
 
     <div v-else class="movies-list">
-      <article v-for="movie in movies" :key="movie.id" class="movie-card">
+      <article
+          v-for="movie in movies.filter(m => filterFutureScreenings(m.screenings).length > 0)"
+          :key="movie.id"
+          class="movie-card"
+      >
+        <div class="movie-poster" v-if="getPosterImage(movie.poster)">
+          <img
+              :src="getPosterImage(movie.poster)"
+              :alt="`Plakat: ${movie.title}`"
+              class="poster-image"
+          />
+        </div>
         <div class="movie-info">
           <h2>{{ movie.title }}</h2>
           <p class="description">{{ movie.description }}</p>
@@ -69,11 +91,11 @@ const selectScreening = (screening: Screening): void => {
           <div class="screenings" aria-label="Wybierz seans">
             <h3>Dostępne seanse:</h3>
             <ul class="screening-list">
-              <li v-for="screening in movie.screenings" :key="screening.id">
+              <li v-for="screening in filterFutureScreenings(movie.screenings)" :key="screening.id">
                 <button
                     type="button"
                     class="screening-btn"
-                    @click="selectScreening(screening)"
+                    @click="selectScreening(screening, movie)"
                     :aria-label="`Wybierz seans ${formatDate(screening.start_time)} o godzinie ${formatTime(screening.start_time)} w sali ${screening.room.name}`"
                 >
                   <span class="date">{{ formatDate(screening.start_time) }}</span>
@@ -111,6 +133,27 @@ const selectScreening = (screening: Screening): void => {
   border: 1px solid #ccc;
   border-radius: 8px;
   padding: 1rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.movie-poster {
+  flex-shrink: 0;
+  width: 120px;
+  height: 180px;
+  background-color: #f3f4f6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.poster-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.movie-info {
+  flex: 1;
 }
 
 .movie-card h2 {

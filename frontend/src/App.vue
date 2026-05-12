@@ -1,7 +1,7 @@
 <template>
   <header class="app-header">
     <nav class="app-nav">
-      <router-link to="/" class="logo">🎬 KinoVue</router-link>
+      <router-link to="/" class="logo">KinoVue</router-link>
       <router-link to="/admin" class="admin-link">Panel admina</router-link>
     </nav>
   </header>
