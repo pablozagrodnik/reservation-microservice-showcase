@@ -106,6 +106,7 @@ onUnmounted(() => {
               v-model.number="form.rows"
               type="number"
               min="1"
+              max="20"
               step="1"
               inputmode="numeric"
               required
@@ -120,6 +121,7 @@ onUnmounted(() => {
               v-model.number="form.cols"
               type="number"
               min="1"
+              max="25"
               step="1"
               inputmode="numeric"
               required
