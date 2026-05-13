@@ -2,9 +2,10 @@
 import { ref } from 'vue';
 import { useMovies } from '@/composables/useMovies';
 import type { Movie } from '@/types';
+import { BASE_URL } from '@/api/client';
 
 const { movies, isLoading, refresh } = useMovies();
-const API_URL = 'http://localhost:8080';
+const API_URL = BASE_URL;
 
 const isModalOpen = ref(false);
 const isEditing = ref(false);

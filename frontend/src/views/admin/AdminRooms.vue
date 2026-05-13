@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { BASE_URL } from '@/api/client';
 
 interface Room {
   id: number;
@@ -8,7 +9,7 @@ interface Room {
   cols?: number;
 }
 
-const API_URL = 'http://localhost:8080';
+const API_URL = BASE_URL;
 
 const rooms = ref<Room[]>([]);
 const isLoading = ref(false);

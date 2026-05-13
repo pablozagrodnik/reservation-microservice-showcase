@@ -65,7 +65,7 @@ func Seed(db *gorm.DB) error {
 		{
 			Title:       "Friz & Wersow. Miłość w czasach online",
 			Description: "Dokumentalna podróż przez życie najpopularniejszej pary influencerów w Polsce, pokazująca kulisy ich związku i kariery.",
-			Poster:      "https://fwcdn.pl/fpo/21/22/10092122/8199797.10.webps",
+			Poster:      "https://fwcdn.pl/fpo/21/22/10092122/8199797.10.webp",
 		},
 		{
 			Title:       "Interstellar",

@@ -95,18 +95,22 @@ import { RouterLink, RouterView } from 'vue-router';
 }
 
 .sidebar-link:hover {
-  background-color: var(--bg-color);
+  background-color: rgba(249, 115, 22, 0.1);
   color: var(--accent);
   transform: translateX(4px);
 }
 
-.sidebar-link-active {
-  background-color: var(--accent) !important;
-  color: #ffffff !important;
-  box-shadow: 0 4px 10px rgba(249, 115, 22, 0.3);
+.sidebar-link.sidebar-link-active {
+  background-color: #f1f5f9 !important;
+  color: #000000 !important;
+  font-weight: 800 !important;
+  box-shadow: none !important;
+  border-left: 4px solid var(--accent) !important;
 }
 
-.sidebar-link-active:hover {
+.sidebar-link.sidebar-link-active:hover {
+  background-color: #e2e8f0 !important;
+  color: #000000 !important;
   transform: none;
 }
 

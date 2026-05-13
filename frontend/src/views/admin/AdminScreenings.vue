@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import type { Movie, Room } from '@/types';
+import { BASE_URL } from '@/api/client';
 
 interface Screening {
   id: number;
@@ -9,7 +10,7 @@ interface Screening {
   start_time: string;
 }
 
-const API_URL = 'http://localhost:8080';
+const API_URL = BASE_URL;
 
 const screenings = ref<Screening[]>([]);
 const movies = ref<Movie[]>([]);

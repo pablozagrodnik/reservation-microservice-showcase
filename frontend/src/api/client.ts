@@ -1,4 +1,6 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+export const BASE_URL = window.location.hostname === 'localhost'
+    ? 'http://localhost:8080'
+    : '/api';
 
 export class ApiError extends Error {
     readonly status: number;
