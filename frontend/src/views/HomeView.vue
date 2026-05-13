@@ -7,7 +7,7 @@ import type { Screening } from '@/types';
 
 const router = useRouter();
 const store = useReservationStore();
-const { movies, isLoading, error } = useMovies();
+const { movies, isLoading} = useMovies();
 
 const activeIndex = ref(0);
 let interval: any = null;

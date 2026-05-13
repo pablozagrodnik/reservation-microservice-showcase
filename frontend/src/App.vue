@@ -4,7 +4,7 @@ import heroImg from '@/assets/hero.png';
 
 const { movies } = useMovies();
 
-const getRandomStyle = (index: number) => {
+const getRandomStyle = () => {
   const top = Math.floor(Math.random() * 80) + 5;
   const left = Math.floor(Math.random() * 80) + 5;
   const rotation = Math.floor(Math.random() * 40) - 20;
@@ -20,11 +20,11 @@ const getRandomStyle = (index: number) => {
 <template>
   <div class="background-overlay">
     <img
-      v-for="(movie, index) in movies"
+      v-for="(movie) in movies"
       :key="movie.id"
       :src="movie.poster"
       class="bg-poster"
-      :style="getRandomStyle(index)"
+      :style="getRandomStyle()"
       alt=""
     />
     <div class="glass-layer"></div>
