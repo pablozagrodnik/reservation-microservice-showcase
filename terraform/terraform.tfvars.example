@@ -1,2 +1,4 @@
 do_token = "digital-ocean-token"
 image_tag = "docker-image-tag"
+db_password = "db-password"
+db_private_host = "db-private-host"
