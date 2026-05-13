@@ -1,378 +1,217 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import type { Movie, Room } from '@/types';
-import { fetchMovies } from '@/api/movies';
-import {
-  createScreening,
-  fetchRooms,
-  type CreateScreeningPayload,
-} from '@/api/admin';
-import { ApiError } from '@/api/client';
 
-interface ScreeningForm {
-  movieId: number | null;
-  roomId: number | null;
-  startTime: string;
+interface Screening {
+  id: number;
+  movie: Movie;
+  room: Room;
+  start_time: string;
 }
 
-const emptyForm = (): ScreeningForm => ({
-  movieId: null,
-  roomId: null,
-  startTime: '',
-});
+const API_URL = 'http://localhost:8080';
 
+const screenings = ref<Screening[]>([]);
 const movies = ref<Movie[]>([]);
 const rooms = ref<Room[]>([]);
-const isLoading = ref<boolean>(true);
-const loadError = ref<string | null>(null);
+const isLoading = ref(false);
 
-const form = reactive<ScreeningForm>(emptyForm());
-const isSubmitting = ref<boolean>(false);
-const successMessage = ref<string | null>(null);
-const errorMessage = ref<string | null>(null);
+const isModalOpen = ref(false);
+const isEditing = ref(false);
+const isSaving = ref(false);
 
-let initialController: AbortController | null = null;
-let submitController: AbortController | null = null;
+const formScreening = ref<{ id?: number; movie_id: number | null; room_id: number | null; start_time: string }>({
+  movie_id: null,
+  room_id: null,
+  start_time: ''
+});
 
-const canSubmit = computed<boolean>(() =>
-    form.movieId !== null &&
-    form.roomId !== null &&
-    form.startTime.trim().length > 0 &&
-    !isSubmitting.value &&
-    !isLoading.value
-);
-
-const formatDateTime = (iso: string): string => {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString('pl-PL', {
-    weekday: 'short',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+const formatDateTime = (iso: string) => {
+  return new Date(iso).toLocaleString('pl-PL', {
+    weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
   });
 };
 
-const loadOptions = async (): Promise<void> => {
-  initialController?.abort();
-  const controller = new AbortController();
-  initialController = controller;
+const formatForInput = (iso: string) => {
+  if (!iso) return '';
+  return new Date(iso).toISOString().slice(0, 16);
+};
 
+const fetchData = async () => {
   isLoading.value = true;
-  loadError.value = null;
-
   try {
-    const [moviesData, roomsData] = await Promise.all([
-      fetchMovies(controller.signal),
-      fetchRooms(controller.signal),
+    const [scrRes, movRes, roomRes] = await Promise.all([
+      fetch(`${API_URL}/admin/screenings`),
+      fetch(`${API_URL}/movies`),
+      fetch(`${API_URL}/admin/rooms`)
     ]);
-    if (initialController !== controller) return;
-    movies.value = moviesData;
-    rooms.value = roomsData;
-  } catch (err) {
-    if (initialController !== controller) return;
-    if (err instanceof DOMException && err.name === 'AbortError') return;
 
-    loadError.value = err instanceof ApiError
-        ? `Nie udało się pobrać danych formularza (kod ${err.status}).`
-        : 'Nie udało się połączyć z serwerem. Sprawdź połączenie i spróbuj ponownie.';
+    if (!scrRes.ok || !movRes.ok || !roomRes.ok) throw new Error();
+
+    screenings.value = await scrRes.json();
+    movies.value = await movRes.json();
+    rooms.value = await roomRes.json();
+  } catch (e) {
+    console.error(e);
   } finally {
-    if (initialController === controller) {
-      isLoading.value = false;
-    }
+    isLoading.value = false;
   }
 };
 
-const resetForm = (): void => {
-  form.movieId = null;
-  form.roomId = null;
-  form.startTime = '';
+const openAddModal = () => {
+  isEditing.value = false;
+  formScreening.value = { movie_id: null, room_id: null, start_time: '' };
+  isModalOpen.value = true;
 };
 
-const handleSubmit = async (): Promise<void> => {
-  if (!canSubmit.value || form.movieId === null || form.roomId === null) return;
-
-  const localDate = new Date(form.startTime);
-  if (Number.isNaN(localDate.getTime())) {
-    errorMessage.value = 'Nieprawidłowa data lub godzina.';
-    return;
-  }
-
-  submitController?.abort();
-  const controller = new AbortController();
-  submitController = controller;
-
-  successMessage.value = null;
-  errorMessage.value = null;
-  isSubmitting.value = true;
-
-  // datetime-local nie ma strefy czasowej — interpretujemy jako czas lokalny
-  // i konwertujemy do RFC3339 (UTC), bo tego oczekuje Go time.Time przy decodingu JSON.
-  const payload: CreateScreeningPayload = {
-    movie_id: form.movieId,
-    room_id: form.roomId,
-    start_time: localDate.toISOString(),
+const openEditModal = (scr: Screening) => {
+  isEditing.value = true;
+  formScreening.value = {
+    id: scr.id,
+    movie_id: scr.movie.id,
+    room_id: scr.room.id,
+    start_time: formatForInput(scr.start_time)
   };
+  isModalOpen.value = true;
+};
 
-  const movieTitle = movies.value.find(m => m.id === payload.movie_id)?.title ?? '?';
-  const roomName = rooms.value.find(r => r.id === payload.room_id)?.name ?? '?';
+const closeModal = () => {
+  isModalOpen.value = false;
+};
 
+const saveScreening = async () => {
+  isSaving.value = true;
   try {
-    const created = await createScreening(payload, controller.signal);
-    if (submitController !== controller) return;
+    const url = isEditing.value ? `${API_URL}/admin/screenings/${formScreening.value.id}` : `${API_URL}/admin/screenings`;
+    const method = isEditing.value ? 'PATCH' : 'POST';
 
-    successMessage.value =
-        `Dodano seans (ID ${created.id}): "${movieTitle}" w sali "${roomName}" na ${formatDateTime(payload.start_time)}.`;
-    resetForm();
-  } catch (err) {
-    if (submitController !== controller) return;
-    if (err instanceof DOMException && err.name === 'AbortError') return;
+    const payload = {
+      movie_id: Number(formScreening.value.movie_id),
+      room_id: Number(formScreening.value.room_id),
+      start_time: new Date(formScreening.value.start_time).toISOString()
+    };
 
-    errorMessage.value = err instanceof ApiError
-        ? `Nie udało się dodać seansu (kod ${err.status}).`
-        : 'Nie udało się połączyć z serwerem. Sprawdź połączenie i spróbuj ponownie.';
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) throw new Error();
+    await fetchData();
+    closeModal();
+  } catch (error) {
+    alert('Wystąpił błąd podczas zapisywania seansu.');
   } finally {
-    if (submitController === controller) {
-      isSubmitting.value = false;
-    }
+    isSaving.value = false;
   }
 };
 
-onMounted(() => {
-  void loadOptions();
-});
-
-onUnmounted(() => {
-  initialController?.abort();
-  submitController?.abort();
-});
+onMounted(fetchData);
 </script>
 
 <template>
-  <section aria-labelledby="admin-screenings-heading">
-    <h2 id="admin-screenings-heading" class="view-title">Dodaj nowy seans</h2>
-
-    <div v-if="isLoading" class="loading-state" aria-busy="true" aria-live="polite">
-      Ładowanie danych formularza...
+  <div class="admin-view">
+    <div class="admin-header">
+      <h2>Zarządzanie Seansami</h2>
+      <button class="btn-primary" @click="openAddModal">+ Dodaj nowy seans</button>
     </div>
 
-    <div v-else-if="loadError" class="error-banner" role="alert">
-      <p>{{ loadError }}</p>
-      <button type="button" class="retry-btn" @click="loadOptions">
-        Spróbuj ponownie
-      </button>
+    <div class="table-container surface">
+      <div v-if="isLoading" class="loading">Ładowanie danych...</div>
+
+      <table v-else class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Film</th>
+            <th>Sala</th>
+            <th>Data rozpoczęcia</th>
+            <th class="actions-col">Akcje</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="scr in screenings" :key="scr.id">
+            <td class="id-col">#{{ scr.id }}</td>
+            <td class="title-col">
+              <strong v-if="scr.movie">{{ scr.movie.title }}</strong>
+              <span v-else class="text-muted">-</span>
+            </td>
+            <td>
+              <span v-if="scr.room">{{ scr.room.name }}</span>
+              <span v-else class="text-muted">Brak sali</span>
+            </td>
+            <td>{{ formatDateTime(scr.start_time) }}</td>
+            <td class="actions-col">
+              <button class="btn-action edit" @click="openEditModal(scr)">Edytuj</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
-    <p v-else-if="movies.length === 0 || rooms.length === 0" class="empty-state">
-      Brak {{ movies.length === 0 ? 'filmów' : 'sal' }} w systemie. Najpierw dodaj je w odpowiednich zakładkach.
-    </p>
+    <div v-if="isModalOpen" class="modal-overlay" @click.self="closeModal">
+      <div class="modal-content">
+        <h3>{{ isEditing ? 'Edytuj seans' : 'Dodaj nowy seans' }}</h3>
 
-    <form
-        v-else
-        class="admin-form"
-        @submit.prevent="handleSubmit"
-        novalidate
-    >
-      <div class="form-group">
-        <label for="screening-movie">Film <span aria-hidden="true">*</span></label>
-        <select
-            id="screening-movie"
-            v-model="form.movieId"
-            required
-            :disabled="isSubmitting"
-        >
-          <option :value="null" disabled>Wybierz film...</option>
-          <option
-              v-for="movie in movies"
-              :key="movie.id"
-              :value="movie.id"
-          >
-            {{ movie.title }}
-          </option>
-        </select>
+        <form @submit.prevent="saveScreening" class="admin-form">
+          <div class="form-group">
+            <label>Film</label>
+            <select v-model="formScreening.movie_id" required>
+              <option :value="null" disabled>Wybierz film...</option>
+              <option v-for="movie in movies" :key="movie.id" :value="movie.id">{{ movie.title }}</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Sala</label>
+            <select v-model="formScreening.room_id" required>
+              <option :value="null" disabled>Wybierz salę...</option>
+              <option v-for="room in rooms" :key="room.id" :value="room.id">{{ room.name }}</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Data i godzina</label>
+            <input v-model="formScreening.start_time" type="datetime-local" required />
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" @click="closeModal">Anuluj</button>
+            <button type="submit" class="btn-primary" :disabled="isSaving">Zapisz</button>
+          </div>
+        </form>
       </div>
-
-      <div class="form-group">
-        <label for="screening-room">Sala <span aria-hidden="true">*</span></label>
-        <select
-            id="screening-room"
-            v-model="form.roomId"
-            required
-            :disabled="isSubmitting"
-        >
-          <option :value="null" disabled>Wybierz salę...</option>
-          <option
-              v-for="room in rooms"
-              :key="room.id"
-              :value="room.id"
-          >
-            {{ room.name }}
-          </option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="screening-start">Data i godzina rozpoczęcia <span aria-hidden="true">*</span></label>
-        <input
-            id="screening-start"
-            v-model="form.startTime"
-            type="datetime-local"
-            required
-            :disabled="isSubmitting"
-        />
-      </div>
-
-      <div
-          v-if="successMessage"
-          class="success-banner"
-          role="status"
-          aria-live="polite"
-      >
-        {{ successMessage }}
-      </div>
-
-      <div
-          v-if="errorMessage"
-          class="error-banner"
-          role="alert"
-          aria-live="assertive"
-      >
-        {{ errorMessage }}
-      </div>
-
-      <button
-          type="submit"
-          class="submit-btn"
-          :disabled="!canSubmit"
-          :aria-busy="isSubmitting"
-      >
-        <span v-if="isSubmitting">Zapisywanie...</span>
-        <span v-else>Dodaj seans</span>
-      </button>
-    </form>
-  </section>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.view-title {
-  margin: 0 0 1.25rem;
-  font-size: 1.25rem;
-  color: #111827;
-}
-
-.admin-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  max-width: 520px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.form-group label {
-  font-weight: 500;
-  margin-bottom: 0.4rem;
-  color: #374151;
-}
-
-.form-group label span {
-  color: #dc2626;
-}
-
-.form-group input,
-.form-group select {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font: inherit;
-  background: white;
-}
-
-.form-group input:focus,
-.form-group select:focus {
-  outline: 2px solid #f97316;
-  border-color: #f97316;
-}
-
-.form-group input:disabled,
-.form-group select:disabled {
-  background-color: #f3f4f6;
-  cursor: not-allowed;
-}
-
-.submit-btn {
-  align-self: flex-start;
-  padding: 0.65rem 1.25rem;
-  background-color: #f97316;
-  color: white;
-  font-weight: 600;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background-color: #ea580c;
-}
-
-.submit-btn:disabled {
-  background-color: #fdba74;
-  cursor: not-allowed;
-}
-
-.success-banner {
-  padding: 0.75rem 1rem;
-  border: 1px solid #a7f3d0;
-  background-color: #ecfdf5;
-  color: #065f46;
-  border-radius: 6px;
-}
-
-.error-banner {
-  padding: 0.75rem 1rem;
-  border: 1px solid #fecaca;
-  background-color: #fef2f2;
-  color: #991b1b;
-  border-radius: 6px;
-}
-
-.error-banner p {
-  margin: 0 0 0.5rem;
-}
-
-.retry-btn {
-  padding: 0.4rem 0.85rem;
-  background-color: white;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  color: #991b1b;
-  cursor: pointer;
-  font: inherit;
-}
-
-.retry-btn:hover {
-  background-color: #fee2e2;
-}
-
-.loading-state {
-  padding: 1rem;
-  color: #6b7280;
-  font-style: italic;
-}
-
-.empty-state {
-  margin: 0;
-  padding: 1rem;
-  color: #6b7280;
-  font-style: italic;
-  background-color: #f9fafb;
-  border: 1px dashed #d1d5db;
-  border-radius: 6px;
-}
+.admin-view { padding: 20px; max-width: 1200px; margin: 0 auto; }
+.admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.admin-header h2 { margin: 0; color: var(--text-main); font-size: 1.8rem; }
+.btn-primary { background-color: #f97316 !important; color: #ffffff !important; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 800; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 6px rgba(249, 115, 22, 0.2); }
+.btn-primary:hover:not(:disabled) { background-color: #ea580c !important; transform: translateY(-1px); }
+.btn-secondary { background-color: #f1f5f9 !important; color: #0f172a !important; border: 1px solid #cbd5e1; padding: 12px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+.btn-secondary:hover { background-color: #e2e8f0 !important; }
+.table-container { background-color: #ffffff; border-radius: 12px; border: 1px solid var(--border); overflow-x: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+.admin-table { width: 100%; border-collapse: collapse; text-align: left; }
+.admin-table th, .admin-table td { padding: 16px; border-bottom: 1px solid var(--border); color: #0f172a; }
+.admin-table th { background-color: #f8fafc; color: #64748b; font-size: 0.85rem; text-transform: uppercase; }
+.admin-table tr:hover { background-color: rgba(249, 115, 22, 0.05); }
+.id-col { width: 60px; color: var(--text-muted); font-weight: bold; }
+.title-col { font-size: 1.1rem; }
+.actions-col { width: 160px; text-align: right; }
+.btn-action { padding: 6px 12px; margin-left: 8px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.85rem; }
+.btn-action.edit { background: #f1f5f9; border: 1px solid #cbd5e1; color: #0f172a; }
+.btn-action.edit:hover { border-color: #f97316; color: #f97316; }
+.modal-overlay { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+.modal-content { width: 90%; max-width: 500px; padding: 2.5rem; background-color: #ffffff !important; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border: 2px solid var(--border); }
+.modal-content h3 { margin: 0 0 1.5rem; font-size: 1.6rem; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 0.5rem; }
+.form-group { margin-bottom: 1.5rem; }
+.form-group label { display: block; font-weight: 700; color: #334155; margin-bottom: 0.5rem; }
+.form-group input, .form-group select { width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #0f172a; font-size: 1rem; }
+.form-group input:focus, .form-group select:focus { border-color: #f97316; outline: none; background: #fff; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; }
+.loading { padding: 3rem; text-align: center; color: var(--text-muted); }
 </style>

@@ -1,259 +1,177 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref } from 'vue';
-import { createRoom, type CreateRoomPayload, type CreateRoomResponse } from '@/api/admin';
-import { ApiError } from '@/api/client';
+import { ref, onMounted } from 'vue';
 
-interface RoomForm {
+interface Room {
+  id: number;
   name: string;
-  rows: number | null;
-  cols: number | null;
+  rows?: number;
+  cols?: number;
 }
 
-const emptyForm = (): RoomForm => ({ name: '', rows: null, cols: null });
+const API_URL = 'http://localhost:8080';
 
-const form = reactive<RoomForm>(emptyForm());
-const isSubmitting = ref<boolean>(false);
-const successMessage = ref<string | null>(null);
-const errorMessage = ref<string | null>(null);
+const rooms = ref<Room[]>([]);
+const isLoading = ref(false);
 
-let activeController: AbortController | null = null;
+const isModalOpen = ref(false);
+const isEditing = ref(false);
+const isSaving = ref(false);
 
-const isPositiveInt = (value: number | null): value is number =>
-    value !== null && Number.isInteger(value) && value > 0;
+const formRoom = ref<Partial<Room>>({
+  name: '',
+  rows: 10,
+  cols: 10
+});
 
-const canSubmit = computed<boolean>(
-    () =>
-        form.name.trim().length > 0 &&
-        isPositiveInt(form.rows) &&
-        isPositiveInt(form.cols) &&
-        !isSubmitting.value
-);
-
-const resetForm = (): void => {
-  form.name = '';
-  form.rows = null;
-  form.cols = null;
-};
-
-const handleSubmit = async (): Promise<void> => {
-  if (!canSubmit.value) return;
-  if (!isPositiveInt(form.rows) || !isPositiveInt(form.cols)) return;
-
-  activeController?.abort();
-  const controller = new AbortController();
-  activeController = controller;
-
-  successMessage.value = null;
-  errorMessage.value = null;
-  isSubmitting.value = true;
-
-  const payload: CreateRoomPayload = {
-    name: form.name.trim(),
-    rows: form.rows,
-    cols: form.cols,
-  };
-
+const fetchRooms = async () => {
+  isLoading.value = true;
   try {
-    const result: CreateRoomResponse = await createRoom(payload, controller.signal);
-    if (activeController !== controller) return;
-
-    const totalSeats = payload.rows * payload.cols;
-    successMessage.value =
-        `Utworzono salę "${result.room.name}" (ID ${result.room.id}) z ${totalSeats} miejscami.`;
-    resetForm();
-  } catch (err) {
-    if (activeController !== controller) return;
-    if (err instanceof DOMException && err.name === 'AbortError') return;
-
-    errorMessage.value = err instanceof ApiError
-        ? `Nie udało się utworzyć sali (kod ${err.status}).`
-        : 'Nie udało się połączyć z serwerem. Sprawdź połączenie i spróbuj ponownie.';
+    const res = await fetch(`${API_URL}/admin/rooms`);
+    if (!res.ok) throw new Error();
+    rooms.value = await res.json();
+  } catch (e) {
+    console.error(e);
   } finally {
-    if (activeController === controller) {
-      isSubmitting.value = false;
-    }
+    isLoading.value = false;
   }
 };
 
-onUnmounted(() => {
-  activeController?.abort();
-});
+const openAddModal = () => {
+  isEditing.value = false;
+  formRoom.value = { name: '', rows: 10, cols: 10 };
+  isModalOpen.value = true;
+};
+
+const openEditModal = (room: Room) => {
+  isEditing.value = true;
+  formRoom.value = { ...room, rows: 10, cols: 10 };
+  isModalOpen.value = true;
+};
+
+const closeModal = () => {
+  isModalOpen.value = false;
+};
+
+const saveRoom = async () => {
+  isSaving.value = true;
+  try {
+    const url = isEditing.value ? `${API_URL}/admin/rooms/${formRoom.value.id}` : `${API_URL}/admin/rooms`;
+    const method = isEditing.value ? 'PATCH' : 'POST';
+
+    const payload = {
+      name: formRoom.value.name,
+      rows: Number(formRoom.value.rows),
+      cols: Number(formRoom.value.cols)
+    };
+
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) throw new Error();
+    await fetchRooms();
+    closeModal();
+  } catch (error) {
+    alert('Wystąpił błąd podczas zapisywania sali.');
+  } finally {
+    isSaving.value = false;
+  }
+};
+
+onMounted(fetchRooms);
 </script>
 
 <template>
-  <section aria-labelledby="admin-rooms-heading">
-    <h2 id="admin-rooms-heading" class="view-title">Utwórz nową salę</h2>
-    <p class="view-hint">Backend wygeneruje siatkę miejsc na podstawie liczby rzędów i kolumn.</p>
+  <div class="admin-view">
+    <div class="admin-header">
+      <h2>Zarządzanie Salami</h2>
+      <button class="btn-primary" @click="openAddModal">+ Dodaj nową salę</button>
+    </div>
 
-    <form class="admin-form" @submit.prevent="handleSubmit" novalidate>
-      <div class="form-group">
-        <label for="room-name">Nazwa sali <span aria-hidden="true">*</span></label>
-        <input
-            id="room-name"
-            v-model="form.name"
-            type="text"
-            required
-            :disabled="isSubmitting"
-            autocomplete="off"
-        />
+    <div class="table-container surface">
+      <div v-if="isLoading" class="loading">Ładowanie danych...</div>
+
+      <table v-else class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nazwa sali</th>
+            <th class="actions-col">Akcje</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="room in rooms" :key="room.id">
+            <td class="id-col">#{{ room.id }}</td>
+            <td class="title-col"><strong>{{ room.name }}</strong></td>
+            <td class="actions-col">
+              <button class="btn-action edit" @click="openEditModal(room)">Edytuj</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div v-if="isModalOpen" class="modal-overlay" @click.self="closeModal">
+      <div class="modal-content">
+        <h3>{{ isEditing ? 'Edytuj salę' : 'Dodaj nową salę' }}</h3>
+
+        <form @submit.prevent="saveRoom" class="admin-form">
+          <div class="form-group">
+            <label>Nazwa sali</label>
+            <input v-model="formRoom.name" type="text" required />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Liczba rzędów</label>
+              <input v-model="formRoom.rows" type="number" min="1" max="50" required />
+            </div>
+
+            <div class="form-group">
+              <label>Liczba kolumn</label>
+              <input v-model="formRoom.cols" type="number" min="1" max="50" required />
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" @click="closeModal">Anuluj</button>
+            <button type="submit" class="btn-primary" :disabled="isSaving">Zapisz</button>
+          </div>
+        </form>
       </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label for="room-rows">Liczba rzędów <span aria-hidden="true">*</span></label>
-          <input
-              id="room-rows"
-              v-model.number="form.rows"
-              type="number"
-              min="1"
-              max="20"
-              step="1"
-              inputmode="numeric"
-              required
-              :disabled="isSubmitting"
-          />
-        </div>
-
-        <div class="form-group">
-          <label for="room-cols">Liczba kolumn <span aria-hidden="true">*</span></label>
-          <input
-              id="room-cols"
-              v-model.number="form.cols"
-              type="number"
-              min="1"
-              max="25"
-              step="1"
-              inputmode="numeric"
-              required
-              :disabled="isSubmitting"
-          />
-        </div>
-      </div>
-
-      <div
-          v-if="successMessage"
-          class="success-banner"
-          role="status"
-          aria-live="polite"
-      >
-        {{ successMessage }}
-      </div>
-
-      <div
-          v-if="errorMessage"
-          class="error-banner"
-          role="alert"
-          aria-live="assertive"
-      >
-        {{ errorMessage }}
-      </div>
-
-      <button
-          type="submit"
-          class="submit-btn"
-          :disabled="!canSubmit"
-          :aria-busy="isSubmitting"
-      >
-        <span v-if="isSubmitting">Zapisywanie...</span>
-        <span v-else>Utwórz salę</span>
-      </button>
-    </form>
-  </section>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.view-title {
-  margin: 0 0 0.25rem;
-  font-size: 1.25rem;
-  color: #111827;
-}
-
-.view-hint {
-  margin: 0 0 1.25rem;
-  color: #6b7280;
-  font-size: 0.95rem;
-}
-
-.admin-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  max-width: 520px;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.form-group label {
-  font-weight: 500;
-  margin-bottom: 0.4rem;
-  color: #374151;
-}
-
-.form-group label span {
-  color: #dc2626;
-}
-
-.form-group input {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font: inherit;
-  background: white;
-}
-
-.form-group input:focus {
-  outline: 2px solid #f97316;
-  border-color: #f97316;
-}
-
-.form-group input:disabled {
-  background-color: #f3f4f6;
-  cursor: not-allowed;
-}
-
-.submit-btn {
-  align-self: flex-start;
-  padding: 0.65rem 1.25rem;
-  background-color: #f97316;
-  color: white;
-  font-weight: 600;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background-color: #ea580c;
-}
-
-.submit-btn:disabled {
-  background-color: #fdba74;
-  cursor: not-allowed;
-}
-
-.success-banner {
-  padding: 0.75rem 1rem;
-  border: 1px solid #a7f3d0;
-  background-color: #ecfdf5;
-  color: #065f46;
-  border-radius: 6px;
-}
-
-.error-banner {
-  padding: 0.75rem 1rem;
-  border: 1px solid #fecaca;
-  background-color: #fef2f2;
-  color: #991b1b;
-  border-radius: 6px;
-}
+.admin-view { padding: 20px; max-width: 1200px; margin: 0 auto; }
+.admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.admin-header h2 { margin: 0; color: var(--text-main); font-size: 1.8rem; }
+.btn-primary { background-color: #f97316 !important; color: #ffffff !important; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 800; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 6px rgba(249, 115, 22, 0.2); }
+.btn-primary:hover:not(:disabled) { background-color: #ea580c !important; transform: translateY(-1px); }
+.btn-secondary { background-color: #f1f5f9 !important; color: #0f172a !important; border: 1px solid #cbd5e1; padding: 12px 24px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+.btn-secondary:hover { background-color: #e2e8f0 !important; }
+.table-container { background-color: #ffffff; border-radius: 12px; border: 1px solid var(--border); overflow-x: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+.admin-table { width: 100%; border-collapse: collapse; text-align: left; }
+.admin-table th, .admin-table td { padding: 16px; border-bottom: 1px solid var(--border); color: #0f172a; }
+.admin-table th { background-color: #f8fafc; color: #64748b; font-size: 0.85rem; text-transform: uppercase; }
+.admin-table tr:hover { background-color: rgba(249, 115, 22, 0.05); }
+.id-col { width: 60px; color: var(--text-muted); font-weight: bold; }
+.title-col { font-size: 1.1rem; }
+.actions-col { width: 160px; text-align: right; }
+.btn-action { padding: 6px 12px; margin-left: 8px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.85rem; }
+.btn-action.edit { background: #f1f5f9; border: 1px solid #cbd5e1; color: #0f172a; }
+.btn-action.edit:hover { border-color: #f97316; color: #f97316; }
+.modal-overlay { position: fixed; inset: 0; background-color: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+.modal-content { width: 90%; max-width: 500px; padding: 2.5rem; background-color: #ffffff !important; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border: 2px solid var(--border); }
+.modal-content h3 { margin: 0 0 1.5rem; font-size: 1.6rem; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 0.5rem; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.form-group { margin-bottom: 1.5rem; }
+.form-group label { display: block; font-weight: 700; color: #334155; margin-bottom: 0.5rem; }
+.form-group input { width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #0f172a; font-size: 1rem; }
+.form-group input:focus { border-color: #f97316; outline: none; background: #fff; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #f1f5f9; }
+.loading { padding: 3rem; text-align: center; color: var(--text-muted); }
 </style>

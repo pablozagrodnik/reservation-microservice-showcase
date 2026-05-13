@@ -132,9 +132,9 @@ const formatDate = (dateString?: string): string => {
 
 <template>
   <main class="checkout-page">
-    <div v-if="paymentSuccess && successDetails" class="success-message" role="alert">
+    <div v-if="paymentSuccess && successDetails" class="success-wrapper" role="alert">
       <TicketSuccess :details="successDetails" />
-      <div style="text-align:center; margin-top:1rem;">
+      <div style="text-align:center; margin-top:2rem;">
         <button @click="goHome" class="btn-secondary">Wróć do strony głównej</button>
       </div>
     </div>
@@ -147,25 +147,28 @@ const formatDate = (dateString?: string): string => {
 
     <div v-else class="checkout-container">
        <section class="summary" aria-labelledby="summary-heading">
-         <h2 id="summary-heading">Twoja rezerwacja</h2>
+         <div class="banner-bg" :style="{ backgroundImage: `url(${store.movie?.poster})` }"></div>
+         <div class="summary-content">
+           <h2 id="summary-heading">Twoja rezerwacja</h2>
 
-         <div class="movie-details">
-           <h3 v-if="store.movie">Film: {{ store.movie.title }}</h3>
-           <h3>Sala: {{ store.screening?.room.name }}</h3>
-           <p class="date">{{ formatDate(store.screening?.start_time) }}</p>
+           <div class="movie-details">
+             <h3 v-if="store.movie">Film: {{ store.movie.title }}</h3>
+             <h3>Sala: {{ store.screening?.room.name }}</h3>
+             <p class="date">{{ formatDate(store.screening?.start_time) }}</p>
+           </div>
+
+          <ul class="tickets-list">
+            <li v-for="seat in store.selectedSeats" :key="seat.id" class="ticket-item">
+              <span>Bilet normalny ({{ formatSeatLabel(seat) }})</span>
+              <span>25,00 zł</span>
+            </li>
+          </ul>
+
+          <div class="total">
+            <span>Suma do zapłaty:</span>
+            <strong>{{ store.totalAmount.toFixed(2) }} zł</strong>
+          </div>
          </div>
-
-        <ul class="tickets-list">
-          <li v-for="seat in store.selectedSeats" :key="seat.id" class="ticket-item">
-            <span>Bilet normalny ({{ formatSeatLabel(seat) }})</span>
-            <span>25,00 zł</span>
-          </li>
-        </ul>
-
-        <div class="total">
-          <span>Suma do zapłaty:</span>
-          <strong>{{ store.totalAmount.toFixed(2) }} zł</strong>
-        </div>
       </section>
 
       <section class="payment-form" aria-labelledby="payment-heading">
@@ -189,7 +192,7 @@ const formatDate = (dateString?: string): string => {
 
           <div
               v-if="errorMessage"
-              class="error-message"
+              class="message-box error"
               role="alert"
               aria-live="assertive"
           >
@@ -199,7 +202,7 @@ const formatDate = (dateString?: string): string => {
                 {{ formatSeatLabel(seat) }}
               </li>
             </ul>
-            <button type="button" class="btn-secondary" @click="goBackToSeats">
+            <button type="button" class="btn-secondary danger" @click="goBackToSeats">
               Wróć do wyboru miejsc
             </button>
           </div>
@@ -238,7 +241,7 @@ const formatDate = (dateString?: string): string => {
   }
 }
 
-.summary, .payment-form, .success-message, .empty-state {
+.payment-form, .empty-state {
   background: white;
   padding: 1.5rem;
   border-radius: 8px;
@@ -246,12 +249,40 @@ const formatDate = (dateString?: string): string => {
   border: 1px solid #e5e7eb;
 }
 
+.summary {
+  position: relative;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  overflow: hidden;
+  color: white;
+}
+
+.banner-bg {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background-size: cover;
+  background-position: center;
+  filter: brightness(0.2) blur(2px);
+  z-index: 0;
+}
+
+.summary-content {
+  position: relative;
+  z-index: 1;
+}
+
+.summary-content h2, .summary-content h3 {
+  color: white;
+  margin-top: 0;
+}
+
 .tickets-list {
   list-style: none;
   padding: 0;
   margin: 1.5rem 0;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .ticket-item {
@@ -326,18 +357,26 @@ const formatDate = (dateString?: string): string => {
   border: 1px solid #d1d5db;
   border-radius: 6px;
   cursor: pointer;
+  color: #374151;
+  font-weight: 500;
 }
 
 .btn-secondary:hover {
   background-color: #e5e7eb;
 }
 
-.success-message {
-  text-align: center;
-  padding: 3rem;
-  background-color: #ecfdf5;
-  border-color: #a7f3d0;
-  color: #065f46;
+.btn-secondary.danger {
+  background-color: white;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.btn-secondary.danger:hover {
+  background-color: #fee2e2;
+}
+
+.success-wrapper {
+  margin-top: 1rem;
 }
 
 .empty-state {
@@ -346,16 +385,19 @@ const formatDate = (dateString?: string): string => {
   color: #4b5563;
 }
 
-.error-message {
+.message-box {
   margin-bottom: 1.5rem;
   padding: 1rem;
+  border-radius: 6px;
+}
+
+.message-box.error {
   background-color: #fef2f2;
   border: 1px solid #fecaca;
-  border-radius: 6px;
   color: #991b1b;
 }
 
-.error-message p {
+.message-box p {
   margin: 0 0 0.5rem;
   font-weight: 500;
 }
@@ -367,16 +409,5 @@ const formatDate = (dateString?: string): string => {
 
 .conflict-list li {
   margin-bottom: 0.25rem;
-}
-
-.error-message .btn-secondary {
-  margin-top: 0.5rem;
-  background-color: white;
-  border-color: #fecaca;
-  color: #991b1b;
-}
-
-.error-message .btn-secondary:hover {
-  background-color: #fee2e2;
 }
 </style>

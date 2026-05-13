@@ -159,6 +159,9 @@ const goToCheckout = (): void => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 1rem;
 }
 
 .seat-row {
@@ -166,6 +169,7 @@ const goToCheckout = (): void => {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  min-width: max-content;
 }
 
 .row-label {

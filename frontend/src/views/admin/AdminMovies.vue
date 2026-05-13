@@ -1,230 +1,220 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref } from 'vue';
-import { createMovie, type AdminMovie, type CreateMoviePayload } from '@/api/admin';
-import { ApiError } from '@/api/client';
+import { ref } from 'vue';
+import { useMovies } from '@/composables/useMovies';
+import type { Movie } from '@/types';
 
-interface MovieForm {
-  title: string;
-  description: string;
-  poster: string;
-}
+const { movies, isLoading, refresh } = useMovies();
+const API_URL = 'http://localhost:8080';
 
-const emptyForm = (): MovieForm => ({ title: '', description: '', poster: '' });
+const isModalOpen = ref(false);
+const isEditing = ref(false);
+const isSaving = ref(false);
 
-const form = reactive<MovieForm>(emptyForm());
-const isSubmitting = ref<boolean>(false);
-const successMessage = ref<string | null>(null);
-const errorMessage = ref<string | null>(null);
+const formMovie = ref<Partial<Movie>>({ title: '', description: '', poster: '' });
 
-let activeController: AbortController | null = null;
-
-const canSubmit = computed<boolean>(
-    () => form.title.trim().length > 0 && !isSubmitting.value
-);
-
-const resetForm = (): void => {
-  form.title = '';
-  form.description = '';
-  form.poster = '';
+const openAddModal = () => {
+  isEditing.value = false;
+  formMovie.value = { title: '', description: '', poster: '' };
+  isModalOpen.value = true;
 };
 
-const handleSubmit = async (): Promise<void> => {
-  if (!canSubmit.value) return;
+const openEditModal = (movie: Movie) => {
+  isEditing.value = true;
+  formMovie.value = { ...movie };
+  isModalOpen.value = true;
+};
 
-  activeController?.abort();
-  const controller = new AbortController();
-  activeController = controller;
+const closeModal = () => { isModalOpen.value = false; };
 
-  successMessage.value = null;
-  errorMessage.value = null;
-  isSubmitting.value = true;
-
-  const payload: CreateMoviePayload = {
-    title: form.title.trim(),
-    description: form.description.trim(),
-    poster: form.poster.trim(),
-  };
-
+const saveMovie = async () => {
+  isSaving.value = true;
   try {
-    const movie: AdminMovie = await createMovie(payload, controller.signal);
-    if (activeController !== controller) return;
+    const url = isEditing.value ? `${API_URL}/admin/movies/${formMovie.value.id}` : `${API_URL}/admin/movies`;
+    const method = isEditing.value ? 'PATCH' : 'POST';
 
-    successMessage.value = `Dodano film "${movie.title}" (ID ${movie.id}).`;
-    resetForm();
-  } catch (err) {
-    if (activeController !== controller) return;
-    if (err instanceof DOMException && err.name === 'AbortError') return;
+    const response = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formMovie.value)
+    });
 
-    errorMessage.value = err instanceof ApiError
-        ? `Nie udało się dodać filmu (kod ${err.status}).`
-        : 'Nie udało się połączyć z serwerem. Sprawdź połączenie i spróbuj ponownie.';
+    if (!response.ok) throw new Error('Błąd zapisu');
+    await refresh();
+    closeModal();
+  } catch (error) {
+    alert('Błąd zapisu filmu.');
   } finally {
-    if (activeController === controller) {
-      isSubmitting.value = false;
-    }
+    isSaving.value = false;
   }
 };
-
-onUnmounted(() => {
-  activeController?.abort();
-});
 </script>
 
 <template>
-  <section aria-labelledby="admin-movies-heading">
-    <h2 id="admin-movies-heading" class="view-title">Dodaj nowy film</h2>
+  <div class="admin-view">
+    <div class="admin-header">
+      <h2>Zarządzanie Filmami</h2>
+      <button class="btn-primary" @click="openAddModal">+ Dodaj nowy film</button>
+    </div>
 
-    <form class="admin-form" @submit.prevent="handleSubmit" novalidate>
-      <div class="form-group">
-        <label for="movie-title">Tytuł <span aria-hidden="true">*</span></label>
-        <input
-            id="movie-title"
-            v-model="form.title"
-            type="text"
-            required
-            :disabled="isSubmitting"
-            autocomplete="off"
-        />
+    <div class="table-container surface">
+      <div v-if="isLoading" class="loading">Ładowanie danych...</div>
+      <table v-else class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th><th>Plakat</th><th>Tytuł filmu</th><th>Opis</th><th class="actions-col">Akcje</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="movie in movies" :key="movie.id">
+            <td class="id-col">#{{ movie.id }}</td>
+            <td class="poster-col">
+              <img :src="movie.poster" class="thumb" v-if="movie.poster" />
+              <div v-else class="thumb-placeholder">Brak</div>
+            </td>
+            <td class="title-col"><strong>{{ movie.title }}</strong></td>
+            <td class="desc-col">{{ movie.description }}</td>
+            <td class="actions-col">
+              <button class="btn-action edit" @click="openEditModal(movie)">Edytuj</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div v-if="isModalOpen" class="modal-overlay" @click.self="closeModal">
+      <div class="modal-content">
+        <h3>{{ isEditing ? 'Edytuj film' : 'Dodaj nowy film' }}</h3>
+        <form @submit.prevent="saveMovie" class="admin-form">
+          <div class="form-group">
+            <label>Tytuł filmu</label>
+            <input v-model="formMovie.title" type="text" required />
+          </div>
+          <div class="form-group">
+            <label>Plakat (URL)</label>
+            <input v-model="formMovie.poster" type="url" />
+          </div>
+          <div class="form-group">
+            <label>Opis</label>
+            <textarea v-model="formMovie.description" rows="4" required></textarea>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" @click="closeModal">Anuluj</button>
+            <button type="submit" class="btn-primary" :disabled="isSaving">Zapisz</button>
+          </div>
+        </form>
       </div>
-
-      <div class="form-group">
-        <label for="movie-description">Opis</label>
-        <textarea
-            id="movie-description"
-            v-model="form.description"
-            rows="4"
-            :disabled="isSubmitting"
-        />
-      </div>
-
-      <div class="form-group">
-        <label for="movie-poster">URL plakatu</label>
-        <input
-            id="movie-poster"
-            v-model="form.poster"
-            type="url"
-            placeholder="https://..."
-            :disabled="isSubmitting"
-            autocomplete="off"
-        />
-      </div>
-
-      <div
-          v-if="successMessage"
-          class="success-banner"
-          role="status"
-          aria-live="polite"
-      >
-        {{ successMessage }}
-      </div>
-
-      <div
-          v-if="errorMessage"
-          class="error-banner"
-          role="alert"
-          aria-live="assertive"
-      >
-        {{ errorMessage }}
-      </div>
-
-      <button
-          type="submit"
-          class="submit-btn"
-          :disabled="!canSubmit"
-          :aria-busy="isSubmitting"
-      >
-        <span v-if="isSubmitting">Zapisywanie...</span>
-        <span v-else>Dodaj film</span>
-      </button>
-    </form>
-  </section>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.view-title {
-  margin: 0 0 1.25rem;
-  font-size: 1.25rem;
-  color: #111827;
+.admin-view {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
-.admin-form {
+.admin-header {
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  max-width: 520px;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-}
+.admin-header h2 { margin: 0; color: var(--text-main); font-size: 1.8rem; }
 
-.form-group label {
-  font-weight: 500;
-  margin-bottom: 0.4rem;
-  color: #374151;
-}
-
-.form-group label span {
-  color: #dc2626;
-}
-
-.form-group input,
-.form-group textarea {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font: inherit;
-  background: white;
-  resize: vertical;
-}
-
-.form-group input:focus,
-.form-group textarea:focus {
-  outline: 2px solid #f97316;
-  border-color: #f97316;
-}
-
-.form-group input:disabled,
-.form-group textarea:disabled {
-  background-color: #f3f4f6;
-  cursor: not-allowed;
-}
-
-.submit-btn {
-  align-self: flex-start;
-  padding: 0.65rem 1.25rem;
-  background-color: #f97316;
-  color: white;
-  font-weight: 600;
+.btn-primary {
+  background-color: #f97316 !important;
+  color: #ffffff !important;
   border: none;
-  border-radius: 6px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 800;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: 0.2s;
+  box-shadow: 0 4px 6px rgba(249, 115, 22, 0.2);
 }
 
-.submit-btn:hover:not(:disabled) {
-  background-color: #ea580c;
+.btn-primary:hover:not(:disabled) {
+  background-color: #ea580c !important;
+  transform: translateY(-1px);
 }
 
-.submit-btn:disabled {
-  background-color: #fdba74;
-  cursor: not-allowed;
+.btn-secondary {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.success-banner {
-  padding: 0.75rem 1rem;
-  border: 1px solid #a7f3d0;
-  background-color: #ecfdf5;
-  color: #065f46;
+.btn-secondary:hover {
+  background-color: #e2e8f0 !important;
+}
+
+.table-container {
+  background-color: #ffffff;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.admin-table { width: 100%; border-collapse: collapse; text-align: left; }
+.admin-table th, .admin-table td { padding: 16px; border-bottom: 1px solid var(--border); color: #0f172a; }
+.admin-table th { background-color: #f8fafc; color: #64748b; font-size: 0.85rem; text-transform: uppercase; }
+
+.thumb { width: 50px; height: 75px; object-fit: cover; border-radius: 4px; }
+
+.btn-action {
+  padding: 6px 12px;
+  margin-left: 8px;
   border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.btn-action.edit { background: #f1f5f9; border: 1px solid #cbd5e1; color: #0f172a; }
+.btn-action.delete { background: #fef2f2; border: 1px solid #fecaca; color: #ef4444; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
 }
 
-.error-banner {
-  padding: 0.75rem 1rem;
-  border: 1px solid #fecaca;
-  background-color: #fef2f2;
-  color: #991b1b;
-  border-radius: 6px;
+.modal-content {
+  width: 90%;
+  max-width: 500px;
+  padding: 2.5rem;
+  background-color: #ffffff !important;
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border: 2px solid var(--border);
+}
+
+.modal-content h3 { margin: 0 0 1.5rem; font-size: 1.6rem; color: #0f172a; border-bottom: 2px solid #f1f5f9; padding-bottom: 0.5rem; }
+
+.form-group { margin-bottom: 1.5rem; }
+.form-group label { display: block; font-weight: 700; color: #334155; margin-bottom: 0.5rem; }
+.form-group input, .form-group textarea {
+  width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #0f172a; font-size: 1rem;
+}
+.form-group input:focus { border-color: #f97316; outline: none; background: #fff; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
 }
 </style>

@@ -19,7 +19,8 @@ type Room struct {
 
 type Screening struct {
 	ID           uint          `gorm:"primaryKey" json:"id"`
-	MovieID      uint          `json:"-"`
+	MovieID      uint          `json:"movie_id"`
+	Movie        Movie         `gorm:"foreignKey:MovieID" json:"movie"`
 	StartTime    time.Time     `json:"start_time"`
 	RoomID       uint          `json:"room_id"`
 	Room         Room          `gorm:"foreignKey:RoomID" json:"room"`

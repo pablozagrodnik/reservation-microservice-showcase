@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useReservationStore } from '@/stores/useReservationStore';
 import { useMovies } from '@/composables/useMovies';
@@ -6,169 +7,281 @@ import type { Screening } from '@/types';
 
 const router = useRouter();
 const store = useReservationStore();
-const { movies, isLoading, error, refresh } = useMovies();
+const { movies, isLoading, error } = useMovies();
 
-const formatTime = (dateString: string): string => {
-  return new Date(dateString).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-};
+const activeIndex = ref(0);
+let interval: any = null;
 
-const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit' });
-};
+const availableMovies = computed(() =>
+  movies.value.filter(m => m.screenings.some(s => new Date(s.start_time) > new Date()))
+);
 
-const selectScreening = (screening: Screening, movie: any): void => {
+const featuredMovies = computed(() => [...availableMovies.value].slice(0, 3));
+
+onMounted(() => {
+  interval = setInterval(() => {
+    if (featuredMovies.value.length > 0) {
+      activeIndex.value = (activeIndex.value + 1) % featuredMovies.value.length;
+    }
+  }, 5000);
+});
+
+onUnmounted(() => clearInterval(interval));
+
+const selectScreening = (screening: Screening, movie: any) => {
   store.setScreening(screening, movie);
   router.push({ name: 'room', params: { id: screening.id } });
 };
 
-const filterFutureScreenings = (screenings: Screening[]): Screening[] => {
-  const now = new Date();
-  return screenings.filter(s => new Date(s.start_time) > now);
-};
-
-const getPosterImage = (poster: string): string => {
-  if (!poster) return '';
-  if (poster.startsWith('http')) return poster;
-  return poster;
-};
+const getPosterImage = (poster: string) => poster || '';
+const formatTime = (ds: string) => new Date(ds).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+const formatDate = (ds: string) => new Date(ds).toLocaleDateString('pl-PL', { weekday: 'short', day: '2-digit', month: '2-digit' });
 </script>
 
 <template>
   <main class="home-page">
-    <h1 class="page-title">Repertuar</h1>
+    <div v-if="isLoading" class="loader">Ładowanie repertuaru...</div>
 
-    <div
-        v-if="isLoading"
-        class="movies-list"
-        aria-busy="true"
-        aria-live="polite"
-        aria-label="Ładowanie repertuaru"
-    >
-      <article v-for="i in 3" :key="i" class="movie-skeleton" aria-hidden="true">
-        <div class="skeleton-title" />
-        <div class="skeleton-line" />
-        <div class="skeleton-line short" />
-        <div class="skeleton-screenings">
-          <span class="skeleton-pill" />
-          <span class="skeleton-pill" />
-          <span class="skeleton-pill" />
-        </div>
-      </article>
-    </div>
+    <template v-else-if="availableMovies.length > 0">
+      <section class="hero-carousel">
+        <div class="carousel-viewport">
+          <div
+            class="carousel-track"
+            :style="{ transform: `translateX(calc(-${activeIndex * 220 + 110}px))` }"
+          >
+            <div
+              v-for="(movie, index) in featuredMovies"
+              :key="movie.id"
+              class="carousel-item"
+              :class="{ active: index === activeIndex }"
+              @click="activeIndex = index"
+            >
+              <div class="poster-wrapper">
+                <img :src="getPosterImage(movie.poster)" :alt="movie.title" />
+              </div>
 
-    <div
-        v-else-if="error"
-        class="error-state"
-        role="alert"
-    >
-      <p class="error-message">{{ error }}</p>
-      <button type="button" class="retry-btn" @click="refresh">
-        Spróbuj ponownie
-      </button>
-    </div>
-
-    <p v-else-if="movies.length === 0" class="empty-state">
-      Brak dostępnych seansów w tej chwili.
-    </p>
-
-    <div v-else class="movies-list">
-      <article
-          v-for="movie in movies.filter(m => filterFutureScreenings(m.screenings).length > 0)"
-          :key="movie.id"
-          class="movie-card"
-      >
-        <div class="movie-poster" v-if="getPosterImage(movie.poster)">
-          <img
-              :src="getPosterImage(movie.poster)"
-              :alt="`Plakat: ${movie.title}`"
-              class="poster-image"
-          />
-        </div>
-        <div class="movie-info">
-          <h2>{{ movie.title }}</h2>
-          <p class="description">{{ movie.description }}</p>
-
-          <div class="screenings" aria-label="Wybierz seans">
-            <h3>Dostępne seanse:</h3>
-            <ul class="screening-list">
-              <li v-for="screening in filterFutureScreenings(movie.screenings)" :key="screening.id">
-                <button
-                    type="button"
-                    class="screening-btn"
-                    @click="selectScreening(screening, movie)"
-                    :aria-label="`Wybierz seans ${formatDate(screening.start_time)} o godzinie ${formatTime(screening.start_time)} w sali ${screening.room.name}`"
-                >
-                  <span class="date">{{ formatDate(screening.start_time) }}</span>
-                  <span class="time">{{ formatTime(screening.start_time) }}</span>
-                  <span class="room">{{ screening.room.name }}</span>
-                </button>
-              </li>
-            </ul>
+              <div class="item-overlay" v-if="index === activeIndex">
+                <h2>{{ movie.title }}</h2>
+                <p class="carousel-desc">{{ movie.description }}</p>
+              </div>
+            </div>
           </div>
         </div>
-      </article>
-    </div>
+
+        <div class="carousel-dots">
+          <span
+            v-for="(_, index) in featuredMovies"
+            :key="index"
+            class="dot"
+            :class="{ active: index === activeIndex }"
+            @click="activeIndex = index"
+          ></span>
+        </div>
+      </section>
+
+      <section class="repertuar-section">
+        <h2 class="title">Repertuar</h2>
+        <div class="movies-grid">
+          <article v-for="movie in availableMovies" :key="movie.id" class="movie-card surface">
+            <img :src="getPosterImage(movie.poster)" class="card-img" />
+            <div class="card-content">
+              <h3>{{ movie.title }}</h3>
+              <p class="card-desc">{{ movie.description }}</p>
+
+              <div class="screenings-wrapper">
+                <span class="times-label">Dostępne seanse:</span>
+                <ul class="screening-list">
+                  <li v-for="s in movie.screenings.slice(0, 4)" :key="s.id">
+                    <button
+                      class="screening-btn"
+                      @click="selectScreening(s, movie)"
+                    >
+                      <span class="date">{{ formatDate(s.start_time) }}</span>
+                      <span class="time">{{ formatTime(s.start_time) }}</span>
+                      <span class="room">{{ s.room.name }}</span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </template>
   </main>
 </template>
 
 <style scoped>
-.home-page {
-  padding: 1rem;
-  max-width: 960px;
-  margin: 0 auto;
-}
+.home-page { padding-bottom: 4rem; overflow-x: hidden; }
 
-.page-title {
-  font-size: 1.5rem;
-  margin: 0 0 1rem;
-}
-
-.movies-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.movie-card {
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  padding: 1rem;
-  display: flex;
-  gap: 1rem;
-}
-
-.movie-poster {
-  flex-shrink: 0;
-  width: 120px;
-  height: 180px;
-  background-color: #f3f4f6;
-  border-radius: 4px;
+.hero-carousel {
+  position: relative;
+  width: 100%;
+  padding: 30px 0;
+  background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+  margin-bottom: 3rem;
   overflow: hidden;
 }
 
-.poster-image {
+.carousel-viewport {
+  position: relative;
+  width: 100%;
+  height: 420px;
+}
+
+.carousel-track {
+  position: absolute;
+  left: 50%;
+  display: flex;
+  align-items: flex-start;
+  transition: transform 0.7s cubic-bezier(0.23, 1, 0.32, 1);
+  will-change: transform;
+}
+
+.carousel-item {
+  flex: 0 0 200px;
+  margin: 0 10px;
+  transform: scale(0.85);
+  opacity: 0.4;
+  transition: all 0.6s ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.carousel-item.active {
+  transform: scale(1.1);
+  opacity: 1;
+  z-index: 10;
+  cursor: default;
+}
+
+.poster-wrapper {
+  width: 200px;
+  height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+  border: 2px solid transparent;
+  transition: border-color 0.3s ease;
+}
+
+.carousel-item.active .poster-wrapper {
+  border-color: var(--accent);
+}
+
+.poster-wrapper img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.movie-info {
+.item-overlay {
+  margin-top: 15px;
+  text-align: center;
+  width: 220px;
+  animation: fadeIn 0.8s ease forwards;
+}
+
+.item-overlay h2 {
+  font-size: 1.2rem;
+  margin: 0 0 6px;
+  color: var(--text-main);
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.carousel-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+.carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.dot.active {
+  background: var(--accent);
+  width: 24px;
+  border-radius: 4px;
+}
+
+.repertuar-section {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.title { font-size: 2.2rem; margin-bottom: 2rem; color: var(--text-main); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+
+.movies-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+}
+
+@media (min-width: 900px) {
+  .movies-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.movie-card {
+  display: flex;
+  gap: 1.2rem;
+  padding: 1.2rem;
+  transition: transform 0.3s ease;
+}
+
+.movie-card:hover { transform: translateY(-3px); }
+
+.card-img {
+  width: 130px;
+  height: 195px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.card-content {
+  display: flex;
+  flex-direction: column;
   flex: 1;
 }
 
-.movie-card h2 {
-  font-size: 1.25rem;
-  margin: 0 0 0.5rem;
+.card-content h3 { margin: 0 0 8px; font-size: 1.4rem; }
+
+.card-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.description {
-  margin: 0 0 1rem;
-  color: #4b5563;
-}
-
-.screenings h3 {
-  font-size: 1rem;
-  margin: 0 0 0.5rem;
+.times-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: bold;
+  margin-bottom: 8px;
 }
 
 .screening-list {
@@ -181,151 +294,32 @@ const getPosterImage = (poster: string): string => {
 }
 
 .screening-btn {
-  display: inline-flex;
+  display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.125rem;
-  padding: 0.5rem 0.875rem;
+  gap: 0.2rem;
+  padding: 0.5rem 0.8rem;
   cursor: pointer;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  background-color: #ffffff;
-  font: inherit;
-  color: inherit;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  transition: all 0.2s ease;
 }
 
 .screening-btn:hover {
-  background-color: #f3f4f6;
-  border-color: #9ca3af;
+  background-color: var(--border);
+  border-color: var(--accent);
 }
 
-.screening-btn:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
+.screening-btn .date { font-size: 0.75rem; color: var(--text-muted); text-transform: capitalize; }
+.screening-btn .time { font-weight: 700; font-size: 1rem; color: var(--accent); }
+.screening-btn .room { font-size: 0.75rem; color: var(--text-muted); }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.screening-btn .date {
-  font-size: 0.75rem;
-  color: #6b7280;
-  text-transform: capitalize;
-}
-
-.screening-btn .time {
-  font-weight: 600;
-}
-
-.screening-btn .room {
-  font-size: 0.75rem;
-  color: #6b7280;
-}
-
-/* Skeleton */
-.movie-skeleton {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1rem;
-  background-color: #ffffff;
-}
-
-.skeleton-title,
-.skeleton-line,
-.skeleton-pill {
-  background: linear-gradient(90deg, #e5e7eb 0%, #f3f4f6 50%, #e5e7eb 100%);
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.4s ease-in-out infinite;
-  border-radius: 4px;
-}
-
-.skeleton-title {
-  height: 1.25rem;
-  width: 60%;
-  margin-bottom: 0.75rem;
-}
-
-.skeleton-line {
-  height: 0.75rem;
-  width: 100%;
-  margin-bottom: 0.5rem;
-}
-
-.skeleton-line.short {
-  width: 75%;
-  margin-bottom: 1rem;
-}
-
-.skeleton-screenings {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.skeleton-pill {
-  height: 2.25rem;
-  width: 5rem;
-}
-
-@keyframes skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-title,
-  .skeleton-line,
-  .skeleton-pill {
-    animation: none;
-  }
-}
-
-/* Error & empty */
-.error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  background-color: #fef2f2;
-}
-
-.error-message {
-  margin: 0;
-  color: #991b1b;
-}
-
-.retry-btn {
-  padding: 0.5rem 1rem;
-  cursor: pointer;
-  border: 1px solid #991b1b;
-  border-radius: 4px;
-  background-color: #ffffff;
-  color: #991b1b;
-  font: inherit;
-}
-
-.retry-btn:hover {
-  background-color: #991b1b;
-  color: #ffffff;
-}
-
-.retry-btn:focus-visible {
-  outline: 2px solid #991b1b;
-  outline-offset: 2px;
-}
-
-.empty-state {
-  color: #6b7280;
-  font-style: italic;
-}
-
-@media (min-width: 640px) {
-  .home-page {
-    padding: 2rem;
-  }
-
-  .page-title {
-    font-size: 2rem;
-  }
-}
+.loader { text-align: center; padding: 100px; color: var(--accent); font-size: 1.2rem; }
 </style>

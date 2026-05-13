@@ -48,30 +48,31 @@ import { RouterLink, RouterView } from 'vue-router';
 <style scoped>
 .admin-shell {
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 1.5rem;
-  max-width: 1100px;
+  grid-template-columns: 250px 1fr;
+  gap: 2rem;
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 1.5rem 1rem;
-  text-align: left;
+  padding: 40px 20px;
   align-items: start;
 }
 
 .admin-sidebar {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1rem;
+  background-color: var(--surface-color);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
   position: sticky;
-  top: 1rem;
+  top: 100px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
 }
 
 .sidebar-title {
-  font-size: 1rem;
-  margin: 0 0 0.75rem;
-  color: #374151;
-  letter-spacing: 0.02em;
+  font-size: 0.9rem;
+  margin: 0 0 1rem;
+  color: var(--text-muted);
+  letter-spacing: 1px;
   text-transform: uppercase;
+  font-weight: bold;
 }
 
 .sidebar-nav {
@@ -80,57 +81,64 @@ import { RouterLink, RouterView } from 'vue-router';
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.5rem;
 }
 
 .sidebar-link {
   display: block;
-  padding: 0.55rem 0.75rem;
-  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
   text-decoration: none;
-  color: #374151;
-  font-weight: 500;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  color: var(--text-main);
+  font-weight: 600;
+  transition: all 0.2s ease;
 }
 
 .sidebar-link:hover {
-  background-color: #f3f4f6;
-}
-
-.sidebar-link:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
+  background-color: var(--bg-color);
+  color: var(--accent);
+  transform: translateX(4px);
 }
 
 .sidebar-link-active {
-  background-color: #f97316;
-  color: white;
+  background-color: var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 10px rgba(249, 115, 22, 0.3);
 }
 
 .sidebar-link-active:hover {
-  background-color: #ea580c;
+  transform: none;
+}
+
+.sidebar-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .admin-content {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1.5rem;
-  min-height: 320px;
+  background: transparent;
+  padding: 0;
+  min-height: 500px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .admin-shell {
     grid-template-columns: 1fr;
   }
 
   .admin-sidebar {
     position: static;
+    margin-bottom: 1rem;
   }
 
   .sidebar-nav {
     flex-direction: row;
     flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .sidebar-link {
+    padding: 0.6rem 1rem;
   }
 }
 </style>
