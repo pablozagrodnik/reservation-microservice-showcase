@@ -1,5 +1,6 @@
 # Dependencies & Build
 node_modules/
+dev-dist/
 dist/
 dist-ssr/
 vendor/
