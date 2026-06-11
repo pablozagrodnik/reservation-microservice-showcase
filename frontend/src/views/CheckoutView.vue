@@ -72,7 +72,7 @@ const handlePayment = async (): Promise<void> => {
 
   } catch (err: any) {
     if (err instanceof ApiError && err.status === 409) {
-      errorMessage.value = err.data?.error || 'Niestety, jedno lub więcej z wybranych miejsc zostało właśnie zajęte. Wróć do sali i wybierz inne.';
+      errorMessage.value = (err.body as any)?.error || 'Niestety, jedno lub więcej z wybranych miejsc zostało właśnie zajęte. Wróć do sali i wybierz inne.';
       conflictedSeats.value = seats;
     } else {
       errorMessage.value = 'Wystąpił nieoczekiwany błąd podczas rezerwacji. Spróbuj ponownie za chwilę.';

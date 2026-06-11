@@ -39,7 +39,7 @@ const getCarouselItemStyle = (index: number) => {
     transform: `translateX(${offset * 220}px) scale(${isActive ? 1.1 : 0.85})`,
     opacity: isActive ? 1 : (isVisible ? 0.4 : 0),
     zIndex: isActive ? 10 : 1,
-    pointerEvents: isVisible ? 'auto' : 'none'
+    pointerEvents: (isVisible ? 'auto' : 'none') as 'auto' | 'none'
   };
 };
 
