@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, toRef } from 'vue';
+import { computed, toRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import type { Seat } from '@/types';
 import { useSeats } from '@/composables/useSeats';
@@ -10,6 +10,12 @@ const props = defineProps<{ id: string }>();
 const router = useRouter();
 const store = useReservationStore();
 const { seats, isLoading, error, refresh } = useSeats(toRef(props, 'id'));
+
+watch(seats, (newSeats) => {
+    if (newSeats.length > 0) {
+        store.removeUnavailableSeats(newSeats);
+    }
+});
 
 const selectedIds = computed<Set<number>>(
     () => new Set(store.selectedSeats.map(s => s.id))

@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useReservationStore } from '@/stores/useReservationStore';
-import { createReservation } from '@/api/reservations';
+import { createReservations } from '@/api/reservations';
 import { ApiError } from '@/api/client';
 import type { Seat } from '@/types';
 import TicketSuccess from '@/components/TicketSuccess.vue';
@@ -38,8 +38,8 @@ const onEmailInput = (): void => {
 const formatSeatLabel = (seat: Seat): string => `Rząd ${seat.row}, miejsce ${seat.col}`;
 
 const handlePayment = async (): Promise<void> => {
-   const screening = store.screening;
-   if (!email.value || !isValidEmail(email.value) || !screening || store.selectedSeats.length === 0) return;
+  const screening = store.screening;
+  if (!email.value || !isValidEmail(email.value) || !screening || store.selectedSeats.length === 0) return;
 
   isProcessing.value = true;
   errorMessage.value = null;
@@ -48,41 +48,20 @@ const handlePayment = async (): Promise<void> => {
   const seats: Seat[] = [...store.selectedSeats];
   const trimmedEmail = email.value.trim();
 
-  const results = await Promise.allSettled(
-      seats.map(seat =>
-          createReservation({
-            screening_id: screening.id,
-            seat_id: seat.id,
-            user_email: trimmedEmail,
-          })
-      )
-  );
+  const payload = seats.map(seat => ({
+    screening_id: screening.id,
+    seat_id: seat.id,
+    user_email: trimmedEmail,
+  }));
 
-  const failures: { seat: Seat; reason: unknown }[] = [];
-  results.forEach((res, idx) => {
-    if (res.status === 'rejected') {
-      failures.push({ seat: seats[idx], reason: res.reason });
-    }
-  });
-
-  isProcessing.value = false;
-
-  if (failures.length === 0) {
-    const reservationIds: number[] = results
-        .filter(r => r.status === 'fulfilled')
-        .map((r: any) => r.value.id);
-
-    const successfulSeats: Seat[] = results
-        .map((r, idx) => ({ res: r, seat: seats[idx] }))
-        .filter(x => x.res.status === 'fulfilled')
-        .map(x => x.seat);
+  try {
+    await createReservations(payload);
 
     successDetails.value = {
-      reservationIds,
       movieTitle: store.movie?.title ?? '',
       roomName: screening.room.name,
       startTime: screening.start_time,
-      seats: successfulSeats,
+      seats: seats,
       email: trimmedEmail,
       total: store.totalAmount,
       poster: store.movie?.poster ?? ''
@@ -90,22 +69,16 @@ const handlePayment = async (): Promise<void> => {
 
     paymentSuccess.value = true;
     store.clearReservation();
-    return;
-  }
 
-  const conflicts = failures.filter(
-      f => f.reason instanceof ApiError && f.reason.status === 409
-  );
-
-  if (conflicts.length === failures.length) {
-    conflictedSeats.value = conflicts.map(c => c.seat);
-    errorMessage.value =
-        conflicts.length === seats.length
-            ? 'Niestety, wybrane miejsca zostały właśnie zajęte przez kogoś innego. Wróć do wyboru miejsc i spróbuj ponownie.'
-            : 'Niektóre z wybranych miejsc zostały właśnie zajęte przez kogoś innego. Wróć do wyboru miejsc i spróbuj ponownie.';
-  } else {
-    errorMessage.value =
-        'Wystąpił nieoczekiwany błąd podczas rezerwacji. Spróbuj ponownie za chwilę.';
+  } catch (err: any) {
+    if (err instanceof ApiError && err.status === 409) {
+      errorMessage.value = err.data?.error || 'Niestety, jedno lub więcej z wybranych miejsc zostało właśnie zajęte. Wróć do sali i wybierz inne.';
+      conflictedSeats.value = seats;
+    } else {
+      errorMessage.value = 'Wystąpił nieoczekiwany błąd podczas rezerwacji. Spróbuj ponownie za chwilę.';
+    }
+  } finally {
+    isProcessing.value = false;
   }
 };
 

@@ -16,7 +16,32 @@ const availableMovies = computed(() =>
   movies.value.filter(m => m.screenings.some(s => new Date(s.start_time) > new Date()))
 );
 
-const featuredMovies = computed(() => [...availableMovies.value].slice(0, 3));
+const featuredMovies = computed(() => availableMovies.value);
+
+const goToMovie = (id: number) => {
+  router.push({ name: 'movie', params: { id: String(id) } });
+};
+
+const getCarouselItemStyle = (index: number) => {
+  const n = featuredMovies.value.length;
+  if (n === 0) return {};
+
+  let offset = index - activeIndex.value;
+
+  const half = Math.floor(n / 2);
+  if (offset < -half) offset += n;
+  if (offset > half) offset -= n;
+
+  const isActive = offset === 0;
+  const isVisible = Math.abs(offset) <= 2;
+
+  return {
+    transform: `translateX(${offset * 220}px) scale(${isActive ? 1.1 : 0.85})`,
+    opacity: isActive ? 1 : (isVisible ? 0.4 : 0),
+    zIndex: isActive ? 10 : 1,
+    pointerEvents: isVisible ? 'auto' : 'none'
+  };
+};
 
 onMounted(() => {
   interval = setInterval(() => {
@@ -45,16 +70,14 @@ const formatDate = (ds: string) => new Date(ds).toLocaleDateString('pl-PL', { we
     <template v-else-if="availableMovies.length > 0">
       <section class="hero-carousel">
         <div class="carousel-viewport">
-          <div
-            class="carousel-track"
-            :style="{ transform: `translateX(calc(-${activeIndex * 220 + 110}px))` }"
-          >
+          <div class="carousel-track">
             <div
               v-for="(movie, index) in featuredMovies"
               :key="movie.id"
               class="carousel-item"
               :class="{ active: index === activeIndex }"
-              @click="activeIndex = index"
+              :style="getCarouselItemStyle(index)"
+              @click="activeIndex === index ? goToMovie(movie.id) : activeIndex = index"
             >
               <div class="poster-wrapper">
                 <img :src="getPosterImage(movie.poster)" :alt="movie.title" />
@@ -82,19 +105,23 @@ const formatDate = (ds: string) => new Date(ds).toLocaleDateString('pl-PL', { we
       <section class="repertuar-section">
         <h2 class="title">Repertuar</h2>
         <div class="movies-grid">
-          <article v-for="movie in availableMovies" :key="movie.id" class="movie-card surface">
+          <article
+            v-for="movie in availableMovies"
+            :key="movie.id"
+            class="movie-card surface"
+            @click="goToMovie(movie.id)"
+            style="cursor: pointer;"
+          >
             <img :src="getPosterImage(movie.poster)" class="card-img" />
             <div class="card-content">
               <h3>{{ movie.title }}</h3>
-              <p class="card-desc">{{ movie.description }}</p>
-
-              <div class="screenings-wrapper">
+              <p class="card-desc">{{ movie.description }}</p> <div class="screenings-wrapper">
                 <span class="times-label">Dostępne seanse:</span>
                 <ul class="screening-list">
                   <li v-for="s in movie.screenings.slice(0, 4)" :key="s.id">
                     <button
                       class="screening-btn"
-                      @click="selectScreening(s, movie)"
+                      @click.stop="selectScreening(s, movie)"
                     >
                       <span class="date">{{ formatDate(s.start_time) }}</span>
                       <span class="time">{{ formatTime(s.start_time) }}</span>
@@ -118,7 +145,7 @@ const formatDate = (ds: string) => new Date(ds).toLocaleDateString('pl-PL', { we
   position: relative;
   width: 100%;
   padding: 30px 0;
-  background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+  background: linear-gradient(to bottom, #f8fafc, #e2e8f0);
   margin-bottom: 3rem;
   overflow: hidden;
 }
@@ -130,20 +157,20 @@ const formatDate = (ds: string) => new Date(ds).toLocaleDateString('pl-PL', { we
 }
 
 .carousel-track {
-  position: absolute;
-  left: 50%;
+  position: relative;
+  width: 100%;
+  height: 100%;
   display: flex;
-  align-items: flex-start;
-  transition: transform 0.7s cubic-bezier(0.23, 1, 0.32, 1);
-  will-change: transform;
+  justify-content: center;
 }
 
 .carousel-item {
-  flex: 0 0 200px;
-  margin: 0 10px;
-  transform: scale(0.85);
-  opacity: 0.4;
-  transition: all 0.6s ease;
+  position: absolute;
+  left: 50%;
+  margin-left: -100px;
+  width: 200px;
+  box-sizing: border-box;
+  transition: transform 0.6s ease, opacity 0.6s ease;
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -159,12 +186,13 @@ const formatDate = (ds: string) => new Date(ds).toLocaleDateString('pl-PL', { we
 
 .poster-wrapper {
   width: 200px;
-  height: 300px;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 10px 20px rgba(0,0,0,0.6);
-  border: 2px solid transparent;
-  transition: border-color 0.3s ease;
+    height: 300px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+    border: 2px solid transparent;
+    transition: border-color 0.3s ease;
+    box-sizing: border-box;
 }
 
 .carousel-item.active .poster-wrapper {
@@ -187,13 +215,13 @@ const formatDate = (ds: string) => new Date(ds).toLocaleDateString('pl-PL', { we
 .item-overlay h2 {
   font-size: 1.2rem;
   margin: 0 0 6px;
-  color: var(--text-main);
-  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  color: #0f172a;
+  text-shadow: none;
 }
 
 .carousel-desc {
   font-size: 0.8rem;
-  color: var(--text-muted);
+  color: #475569;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -300,7 +328,7 @@ const formatDate = (ds: string) => new Date(ds).toLocaleDateString('pl-PL', { we
   gap: 0.2rem;
   padding: 0.5rem 0.8rem;
   cursor: pointer;
-  border: 1px solid var(--border);
+  border: 2px solid var(--accent, #f97316);
   border-radius: 8px;
   background-color: var(--bg-color);
   color: var(--text-main);
