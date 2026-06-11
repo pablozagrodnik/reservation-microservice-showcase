@@ -161,6 +161,9 @@ const formatDate = (dateString?: string): string => {
                  @input="onEmailInput"
              />
              <span v-if="emailError" class="field-error">{{ emailError }}</span>
+             <div class="ticket-info-note" style="margin-top: 0.75rem; font-size: 0.85rem; color: #4b5563; line-height: 1.4;">
+                  <strong>Informacja:</strong> Bilety zostaną dostarczone w formie cyfrowych kodów QR na wskazany adres e-mail.
+                </div>
            </div>
 
           <div
