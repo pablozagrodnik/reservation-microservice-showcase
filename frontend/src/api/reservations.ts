@@ -13,9 +13,9 @@ export interface Reservation {
     user_email: string;
 }
 
-export function createReservation(
-    payload: CreateReservationPayload,
+export function createReservations(
+    payload: CreateReservationPayload[],
     signal?: AbortSignal
-): Promise<Reservation> {
-    return apiPost<Reservation>('/reservations', payload, { signal });
+): Promise<{ message: string }> {
+    return apiPost<{ message: string }>('/reservations', payload, { signal });
 }
