@@ -252,7 +252,7 @@ const formatDate = (ds: string) => new Date(ds).toLocaleDateString('pl-PL', { we
 }
 
 .repertuar-section {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 0 1.5rem;
 }
