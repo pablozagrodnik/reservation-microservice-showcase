@@ -14,6 +14,11 @@ const routes = [
         component: HomeView
     },
     {
+        path: '/movie/:id',
+        name: 'movie',
+        component: () => import('@/views/MovieView.vue')
+    },
+    {
         path: '/screening/:id',
         name: 'room',
         component: RoomView,

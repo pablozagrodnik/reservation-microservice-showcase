@@ -35,6 +35,14 @@ export const useReservationStore = defineStore('reservation', () => {
         selectedSeats.value = [];
     };
 
+    const removeUnavailableSeats = (latestSeats: Seat[]) => {
+        selectedSeats.value = selectedSeats.value.filter(selectedSeat => {
+            const updatedSeat = latestSeats.find(s => s.id === selectedSeat.id);
+            // Zostaw w koszyku tylko te miejsca, które nadal są wolne
+            return updatedSeat ? !updatedSeat.is_taken : true;
+        });
+    };
+
     return {
         screening,
         movie,
@@ -43,6 +51,7 @@ export const useReservationStore = defineStore('reservation', () => {
         isReadyForCheckout,
         setScreening,
         toggleSeat,
-        clearReservation
+        clearReservation,
+        removeUnavailableSeats
     };
 });

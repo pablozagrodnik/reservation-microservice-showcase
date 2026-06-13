@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useMovies } from '@/composables/useMovies';
-import heroImg from '@/assets/hero.png';
+import heroImg from '@/assets/cinema-icon.svg';
 
 const { movies } = useMovies();
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pablozagrodnik/reservation-microservice-showcase/internal/models"
 	"github.com/pablozagrodnik/reservation-microservice-showcase/internal/repository/pg"
+	"gorm.io/gorm"
 )
 
 // odpowiedzi json
@@ -107,29 +109,42 @@ func main() {
 	})
 
 	r.POST("/reservations", func(c *gin.Context) {
-		var res models.Reservation
-		if err := c.ShouldBindJSON(&res); err != nil {
+		var requests []models.Reservation
+		if err := c.ShouldBindJSON(&requests); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Błędne dane rezerwacji"})
 			return
 		}
 
-		// sprawdzenie zajętości miejsca
-		var existing models.Reservation
-		err := db.Where("screening_id = ? AND seat_id = ?", res.ScreeningID, res.SeatID).First(&existing).Error
-		if err == nil {
-			c.JSON(http.StatusConflict, gin.H{"error": "To miejsce zostało właśnie zajęte przez kogoś innego!"})
+		if len(requests) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Brak miejsc do rezerwacji"})
 			return
 		}
 
-		// zapis rezerwacji
-		if err := db.Create(&res).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Błąd podczas zapisu w bazie"})
+		// transakcja bazy danych
+		err := db.Transaction(func(tx *gorm.DB) error {
+			for _, res := range requests {
+				var existing models.Reservation
+				err := tx.Where("screening_id = ? AND seat_id = ?", res.ScreeningID, res.SeatID).First(&existing).Error
+				if err == nil {
+					return errors.New("Jedno z wybranych miejsc zostało właśnie zajęte przez kogoś innego!")
+				}
+
+				// zapis rezerwacji
+				if err := tx.Create(&res).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+
+		// obsługa błędu transakcji
+		if err != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
 
-		log.Printf("Rezerwacja nr %d zapisana dla: %s", res.ID, res.UserEmail)
-
-		c.JSON(http.StatusCreated, res)
+		log.Printf("Zapisano %d rezerwacji dla: %s", len(requests), requests[0].UserEmail)
+		c.JSON(http.StatusCreated, gin.H{"message": "Rezerwacja zakończona sukcesem"})
 	})
 
 	// panel admina (pełny crud)
